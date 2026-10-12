@@ -1,0 +1,39 @@
+{
+  "configVersion": 1,
+  "bindHost": "127.0.0.1",
+  "port": 8791,
+  "concurrency": 2,
+  "paused": false,
+  "dryRun": false,
+  "trashRetentionDays": 30,
+  "settleSeconds": 60,
+  "maxAutoRetries": 3,
+  "stagingDir": "~/.media-sync/staging",
+  "reviewDir": "~/.media-sync/review",
+  "trashDir": "~/.media-sync/trash",
+  "logDir": "~/.media-sync/logs",
+  "syncLockFile": "~/.media-sync/lock.json",
+  "lockHeartbeatSeconds": 300,
+  "lockStaleSeconds": 900,
+  "ntfy": {
+    "url": "",
+    "token": "",
+    "notifySuccess": true
+  },
+  "folders": [
+    {
+      "name": "Camera",
+      "source": "~/PhoneSync/Camera",
+      "destination": "~/Media/Camera",
+      "method": "standardize",
+      "settleSeconds": 60
+    },
+    {
+      "name": "Screenshots",
+      "source": "~/PhoneSync/Screenshots",
+      "destination": "~/Media/Screenshots",
+      "method": "standardize",
+      "settleSeconds": 60
+    }
+  ]
+}
