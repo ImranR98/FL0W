@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { AppHeader, Button, Dropzone, EmptyState, Field, getBrand, getJson, Page, postJson, putJson, showToast, ThemeToggle, Toasts, uploadFile as uploadFileRequest, usePolling } from '@dscpln/ui-kit'
 import { pruneTarGz } from '../../src/tasks/ui/src/lib/prune-tar-gz.js'
-import TaskCard from '../../src/tasks/ui/src/components/TaskCard.jsx'
 import AttributesModal from '../../src/tasks/ui/src/components/AttributesModal.jsx'
-import TaskSettingsModal from '../../src/tasks/ui/src/components/TaskSettingsModal.jsx'
 import ConfirmModal from '../../src/tasks/ui/src/components/modals/ConfirmModal.jsx'
 import FieldsModal from '../../src/tasks/ui/src/components/modals/FieldsModal.jsx'
 import PickerModal from '../../src/tasks/ui/src/components/modals/PickerModal.jsx'
 import ResultModal from '../../src/tasks/ui/src/components/modals/ResultModal.jsx'
-import PipelineCard from './components/PipelineCard.jsx'
+import JobCard from './components/JobCard.jsx'
+import JobSettingsDialog from './components/JobSettingsDialog.jsx'
 import PipelineDetail from './PipelineDetail.jsx'
 
 const UNASSIGNED = 'Unassigned'
@@ -58,9 +57,8 @@ export default function App() {
   const [browserAvailable, setBrowserAvailable] = useState(false)
   const [openBrowsers, setOpenBrowsers] = useState({})
   const [liveLogs, setLiveLogs] = useState({})
-  const [now, setNow] = useState(Date.now())
   const [modals, setModals] = useState([])
-  const [settingsTask, setSettingsTask] = useState(null)
+  const [settingsJob, setSettingsJob] = useState(null)
   const [attributes, setAttributes] = useState([])
   const [defaultGroupBy, setDefaultGroupBy] = useState('')
   const [groupBy, setGroupBy] = useState('')
@@ -382,7 +380,6 @@ export default function App() {
   }
 
   const poll = useCallback(async () => {
-    setNow(Date.now())
     let activity = false
     try {
       const status = await getJson('/tasks/api/status')
@@ -433,7 +430,7 @@ export default function App() {
 
   const saveSettings = async (task, settings) => {
     const saved = await putJson(`/api/jobs/${encodeURIComponent(task.id)}/settings`, settings)
-    setSettingsTask(null)
+    setSettingsJob(null)
     toast('Job settings saved.')
     await loadJobs()
     return saved
@@ -458,6 +455,8 @@ export default function App() {
       toast(err.message, 'error')
     }
   }
+
+  const runJob = (job) => (job.type === 'pipeline' ? runPipeline(job) : runTask(job))
 
   const togglePaused = async () => {
     try {
@@ -601,30 +600,26 @@ export default function App() {
             </div>
             <div className="task-grid">
               {group.jobs.map((job) => (
-                job.type === 'pipeline' ? (
-                  <PipelineCard key={job.id} job={job} onRun={runPipeline} onOpen={openPipeline} />
-                ) : (
-                  <TaskCard
-                    key={job.name}
-                    task={job}
-                    attributes={attributes}
-                    groupBy={groupBy}
-                    now={now}
-                    preparing={preparing}
-                    uploading={uploading}
-                    queues={queues}
-                    browserAvailable={browserAvailable}
-                    openBrowsers={openBrowsers}
-                    onToggleBrowser={(name) => setOpenBrowsers((current) => ({ ...current, [name]: !current[name] }))}
-                    onQueueFiles={queueFiles}
-                    onRemoveQueued={removeQueued}
-                    onSettings={setSettingsTask}
-                    onAction={runAction}
-                    onRun={runTask}
-                    onCancel={cancelRun}
-                    onLog={openLog}
-                  />
-                )
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  attributes={attributes}
+                  groupBy={groupBy}
+                  preparing={preparing}
+                  uploading={uploading}
+                  queues={queues}
+                  browserAvailable={browserAvailable}
+                  openBrowsers={openBrowsers}
+                  onToggleBrowser={(name) => setOpenBrowsers((current) => ({ ...current, [name]: !current[name] }))}
+                  onQueueFiles={queueFiles}
+                  onRemoveQueued={removeQueued}
+                  onSettings={setSettingsJob}
+                  onAction={runAction}
+                  onRun={runJob}
+                  onCancel={(jobEntry) => cancelRun(jobEntry.name)}
+                  onLog={openLog}
+                  onFiles={openPipeline}
+                />
               ))}
             </div>
           </div>
@@ -637,12 +632,12 @@ export default function App() {
         <p className="footer-note">Run state is stored in the gitignored .state folder of the config repo; dropped files are held in the browser until you click Run.</p>
       </Page>
 
-      {settingsTask ? (
-        <TaskSettingsModal
-          task={settingsTask}
+      {settingsJob ? (
+        <JobSettingsDialog
+          job={settingsJob}
           attributes={attributes}
-          onClose={() => setSettingsTask(null)}
-          onSave={(settings) => saveSettings(settingsTask, settings)}
+          onClose={() => setSettingsJob(null)}
+          onSave={(settings) => saveSettings(settingsJob, settings)}
         />
       ) : null}
 

@@ -1,94 +1,73 @@
-/* FL0W additions on top of the task-runner and shared kit styles. */
+/* FL0W job cards on top of the shared kit and the task/pipeline body styles. */
 
-.pipeline-job-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-}
-
-.pipeline-job-card__method {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: var(--fs-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.pipeline-job-card__paths {
-    display: grid;
-    gap: var(--space-1);
-    font-size: var(--fs-xs);
-    color: var(--text-muted);
-    overflow-wrap: anywhere;
-}
-
-.pipeline-job-card__stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    font-size: var(--fs-sm);
-    color: var(--text-muted);
-}
-
-.pipeline-job-card__stats strong {
-    color: var(--text);
-}
-
-.pipeline-job-card__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-}
-
-.button-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    text-decoration: none;
-    font-size: var(--fs-sm);
-}
-
-.fl0w-job-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: var(--space-3);
-}
-
-.fl0w-job-toolbar .task-toolbar__field {
-    min-width: 11rem;
-}
-
-.fl0w-view-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-    font-size: var(--fs-sm);
-}
-
-
-/* Unified job cards */
 .job-card {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     min-width: 0;
+    height: 100%;
 }
 
-.pipeline-card__method {
-    margin: 0;
+.job-card__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-2);
+}
+
+.job-card__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.job-card__heading .card-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.job-card__header .status-pill {
+    flex: none;
+}
+
+.job-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+    background: var(--surface-3);
     color: var(--text-muted);
-    font-size: var(--fs-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
-.pipeline-card__paths {
+.job-type-badge--pipeline {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.job-card__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.job-card__task,
+.job-card__pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.job-card__paths {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -98,13 +77,13 @@
     overflow-wrap: anywhere;
 }
 
-.pipeline-card__paths code {
-    background: var(--surface-2);
-    border-radius: var(--radius-sm);
+.job-card__paths code {
     padding: 0.1rem 0.35rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
 }
 
-.pipeline-card__stats {
+.job-card__stats {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
@@ -112,30 +91,46 @@
     color: var(--text-muted);
 }
 
-.pipeline-card__stats strong {
+.job-card__stats strong {
     color: var(--text);
 }
 
-.pipeline-card__pace {
+.job-card__pace {
     margin: 0;
     color: var(--text-muted);
     font-size: var(--fs-xs);
 }
 
-.pipeline-card__actions {
+.job-card__extras {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+}
+
+.job-card__extra-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.job-card__actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-top: auto;
     padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
 }
 
-/* Keep primary actions readable on narrow cards. */
-.pipeline-card__actions .btn {
-    flex: 1 1 auto;
+.job-card__actions .btn {
+    flex: 0 1 auto;
 }
 
+.job-card__extra-actions .btn {
+    flex: 0 1 auto;
+}
 
+/* Shared run-history list used by the pipeline detail page. */
 .run-list {
     display: grid;
     gap: 0;
@@ -176,5 +171,9 @@
     .run-list__meta {
         grid-column: 1 / -1;
         white-space: normal;
+    }
+
+    .job-card__actions .btn {
+        flex: 1 1 100%;
     }
 }

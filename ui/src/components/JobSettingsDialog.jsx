@@ -1,21 +1,25 @@
 import { useMemo, useState } from 'react'
-import { Dialog, Field } from '@dscpln/ui-kit'
+import { Button, Dialog, Field } from '@dscpln/ui-kit'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-// One dialog for everything the UI can persist about a task: its schedule and
-// its attribute values. Both are written to task-meta.json in the config repo.
-export default function TaskSettingsModal({ task, attributes, onClose, onSave }) {
-  const current = task.schedule ?? {}
-  const [enabled, setEnabled] = useState(Boolean(current.enabled))
-  const [daily, setDaily] = useState(!(current.days?.length))
-  const [days, setDays] = useState(new Set(current.days ?? []))
-  const [at, setAt] = useState(current.at ?? '05:00')
-  const [catchUp, setCatchUp] = useState(current.catchUp !== false)
-  const values = useMemo(() => ({ ...(task.attributes ?? {}) }), [task])
-  const [taskAttributes, setTaskAttributes] = useState(values)
+// One dialog for the metadata every job shares: attributes, schedule,
+// notifications and enabled state. Type-specific settings (pipeline paths,
+// task commands) live with their executor.
+export default function JobSettingsDialog({ job, attributes, onClose, onSave }) {
+  const schedule = job.schedule ?? {}
+  const [scheduleEnabled, setScheduleEnabled] = useState(Boolean(schedule.enabled))
+  const [daily, setDaily] = useState(!(schedule.days?.length))
+  const [days, setDays] = useState(new Set(schedule.days ?? []))
+  const [at, setAt] = useState(schedule.at ?? '05:00')
+  const [catchUp, setCatchUp] = useState(schedule.catchUp !== false)
+  const [jobEnabled, setJobEnabled] = useState(job.enabled !== false)
+  const [notify, setNotify] = useState(job.notify ?? 'never')
+  const values = useMemo(() => ({ ...(job.attributes ?? {}) }), [job])
+  const [jobAttributes, setJobAttributes] = useState(values)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const canSchedule = job.capabilities?.schedule ?? job.schedulable
 
   const toggleDay = (day, checked) => {
     setDays((currentDays) => {
@@ -28,27 +32,31 @@ export default function TaskSettingsModal({ task, attributes, onClose, onSave })
 
   const attributeValues = (attribute) => {
     const list = [...(attribute.values ?? [])]
-    const selected = taskAttributes[attribute.name]
+    const selected = jobAttributes[attribute.name]
     if (selected && !list.includes(selected)) list.push(selected)
     return list
   }
 
   const save = async () => {
     setError('')
-    if (task.schedulable && enabled && !daily && days.size === 0) {
+    if (canSchedule && scheduleEnabled && !daily && days.size === 0) {
       setError('Choose at least one day, or select Every day.')
       return
     }
-    if (task.schedulable && enabled && !/^\d{2}:\d{2}$/.test(at)) {
+    if (canSchedule && scheduleEnabled && !/^\d{2}:\d{2}$/.test(at)) {
       setError('Choose a valid time.')
       return
     }
     setSaving(true)
     try {
-      const payload = { attributes: taskAttributes }
-      if (task.schedulable) {
+      const payload = {
+        attributes: jobAttributes,
+        enabled: jobEnabled,
+        notify,
+      }
+      if (canSchedule) {
         payload.schedule = {
-          enabled,
+          enabled: scheduleEnabled,
           days: daily ? [] : [...days].sort((a, b) => a - b),
           at,
           catchUp,
@@ -65,29 +73,44 @@ export default function TaskSettingsModal({ task, attributes, onClose, onSave })
   return (
     <Dialog
       className="wide-dialog"
-      title={`Settings: ${task.name}`}
+      title={`Settings: ${job.name}`}
       onClose={onClose}
       requestClose={onClose}
       actions={(
         <>
-          <button className="outline secondary" type="button" onClick={onClose}>Cancel</button>
-          <button type="button" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save settings'}</button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save settings'}</Button>
         </>
       )}
     >
       <div className="settings-body">
         <section className="settings-section">
+          <h3>Job</h3>
+          <label className="schedule-toggle">
+            <input type="checkbox" checked={jobEnabled} onChange={(event) => setJobEnabled(event.target.checked)} />
+            <span>Enabled</span>
+          </label>
+          <Field label="Notifications" htmlFor="job-notify" hint="Failures always notify; “always” also sends successful runs.">
+            <select id="job-notify" value={notify} onChange={(event) => setNotify(event.target.value)}>
+              <option value="never">Never</option>
+              <option value="errors">On failure</option>
+              <option value="always">Always</option>
+            </select>
+          </Field>
+        </section>
+
+        <section className="settings-section">
           <h3>Attributes</h3>
           {attributes.length ? (
             <div className="attribute-editor">
               {attributes.map((attribute) => (
-                <Field key={attribute.name} label={attribute.name} htmlFor={`task-attribute-${attribute.name}`}>
+                <Field key={attribute.name} label={attribute.name} htmlFor={`job-attribute-${attribute.name}`}>
                   <select
-                    id={`task-attribute-${attribute.name}`}
-                    value={taskAttributes[attribute.name] ?? ''}
+                    id={`job-attribute-${attribute.name}`}
+                    value={jobAttributes[attribute.name] ?? ''}
                     onChange={(event) => {
                       const value = event.target.value
-                      setTaskAttributes((currentValues) => {
+                      setJobAttributes((currentValues) => {
                         const next = { ...currentValues }
                         if (value) next[attribute.name] = value
                         else delete next[attribute.name]
@@ -106,15 +129,15 @@ export default function TaskSettingsModal({ task, attributes, onClose, onSave })
 
         <section className="settings-section">
           <h3>Schedule</h3>
-          {task.schedulable ? (
+          {canSchedule ? (
             <div className="schedule-editor">
               <label className="schedule-toggle">
-                <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-                <span>Run this task automatically on a schedule</span>
+                <input type="checkbox" checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} />
+                <span>Run this job automatically on a schedule</span>
               </label>
 
-              <Field label="Time" htmlFor="schedule-time" hint="Local time on the Task Runner instance.">
-                <input id="schedule-time" type="time" value={at} onChange={(event) => setAt(event.target.value)} />
+              <Field label="Time" htmlFor="job-schedule-time" hint="Local time on the FL0W instance.">
+                <input id="job-schedule-time" type="time" value={at} onChange={(event) => setAt(event.target.value)} />
               </Field>
 
               <div className="field">
@@ -137,11 +160,11 @@ export default function TaskSettingsModal({ task, attributes, onClose, onSave })
 
               <label className="schedule-toggle">
                 <input type="checkbox" checked={catchUp} onChange={(event) => setCatchUp(event.target.checked)} />
-                <span>Catch up a missed run when the Task Runner comes back</span>
+                <span>Catch up a missed run when FL0W comes back</span>
               </label>
             </div>
           ) : (
-            <p className="hint">This task needs manual input or browser interaction, so it cannot be scheduled.</p>
+            <p className="hint">This job needs manual input or browser interaction, so it cannot be scheduled.</p>
           )}
         </section>
 

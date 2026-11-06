@@ -26,7 +26,7 @@ import RestoreDialog from '../../src/pipelines/ui/src/components/dialogs/Restore
 import ReviewDialog from '../../src/pipelines/ui/src/components/dialogs/ReviewDialog.jsx'
 import SetDateDialog from '../../src/pipelines/ui/src/components/dialogs/SetDateDialog.jsx'
 import SettingsDialog from '../../src/pipelines/ui/src/components/dialogs/SettingsDialog.jsx'
-import TaskSettingsModal from '../../src/tasks/ui/src/components/TaskSettingsModal.jsx'
+import JobSettingsDialog from './components/JobSettingsDialog.jsx'
 import { folderStats } from '../../src/pipelines/ui/src/lib/view.js'
 
 const emptyTrash = { entries: [], selectAll: false }
@@ -338,10 +338,10 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
         actions={(
           <>
             <Button variant="outline" icon={Play} onClick={processNow} disabled={currentJob.enabled === false}>
-              Process now
+              Run
             </Button>
-            <Button variant="ghost" icon={Wrench} onClick={() => setJobSettingsOpen(true)}>Job settings</Button>
-            <Button variant="ghost" icon={Settings} onClick={openSettings} aria-label="Pipeline settings" />
+            <Button variant="ghost" icon={Settings} onClick={() => setJobSettingsOpen(true)}>Settings</Button>
+            <Button variant="ghost" icon={Wrench} onClick={openSettings} aria-label="Pipeline setup" title="Pipeline setup" />
             <Button variant="ghost" icon={RefreshCw} onClick={() => { refresh(); refreshTrash(); refreshLog() }} aria-label="Refresh pipeline" />
             <ThemeToggle />
           </>
@@ -420,8 +420,8 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
       </Page>
 
       {jobSettingsOpen ? (
-        <TaskSettingsModal
-          task={currentJob}
+        <JobSettingsDialog
+          job={currentJob}
           attributes={attributes}
           onClose={() => setJobSettingsOpen(false)}
           onSave={saveJobSettings}

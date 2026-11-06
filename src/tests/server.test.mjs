@@ -55,6 +55,8 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   assert.equal(jobs.jobs.length, 2)
   assert.deepEqual(jobs.jobs.map((job) => job.type).sort(), ['pipeline', 'task'])
   assert.equal(jobs.jobs.find((job) => job.type === 'task').name, 'Echo')
+  assert.equal(jobs.jobs.find((job) => job.type === 'task').subtype, 'command')
+  assert.equal(jobs.jobs.find((job) => job.type === 'pipeline').subtype, 'copy')
   assert.equal(jobs.jobs.find((job) => job.type === 'pipeline').attributes.Category, 'Media and Files')
 
   const state = await (await fetch(`${base}/api/state`)).json()
@@ -111,6 +113,20 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   const meta = JSON.parse(await fsp.readFile(metaFile, 'utf8'))
   assert.equal(meta.jobs['task:Echo'].schedule.at, hhmm)
   assert.ok(meta.jobs['pipeline:Camera'])
+
+  // The common job settings dialog edits pipeline attributes and notify mode
+  // through the same endpoint as tasks.
+  const pipelinePatched = await fetch(`${base}/api/jobs/pipeline:Camera`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attributes: { Category: 'Media and Files', 'Best run from': 'PC' }, notify: 'errors' }),
+  })
+  assert.equal(pipelinePatched.status, 200)
+  const patchedPipeline = await pipelinePatched.json()
+  assert.equal(patchedPipeline.attributes['Best run from'], 'PC')
+  assert.equal(patchedPipeline.notify, 'errors')
+  const updatedMeta = JSON.parse(await fsp.readFile(metaFile, 'utf8'))
+  assert.equal(updatedMeta.jobs['pipeline:Camera'].attributes['Best run from'], 'PC')
 
   // A paused pipeline records a missed scheduled run, while a manual run is
   // still allowed (the UI's Process now button stays enabled).

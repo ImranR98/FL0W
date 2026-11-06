@@ -96,7 +96,7 @@ export class JobEngine {
 
   #stateFor(id, fallback = null) {
     const last = this.#lastRun(id)
-    if (!last) return fallback
+    if (!last) return fallback === 'fail' ? 'danger' : fallback
     return {
       ts: last.endedAt / 1000,
       ok: Boolean(last.ok),
@@ -108,8 +108,8 @@ export class JobEngine {
   #pill(id, running, fallback = 'neutral') {
     if (running) return 'running'
     const last = this.#lastRun(id)
-    if (!last) return fallback
-    if (!last.ok) return 'fail'
+    if (!last) return fallback === 'fail' ? 'danger' : fallback
+    if (!last.ok) return 'danger'
     return Date.now() / 1000 - last.endedAt / 1000 < DAY_SECONDS ? 'ok' : 'neutral'
   }
 
@@ -141,6 +141,7 @@ export class JobEngine {
       id,
       type: 'task',
       kind: 'task',
+      subtype: task.webhook ? 'webhook' : 'command',
       attributes: { ...entry.attributes },
       schedule: entry.schedule,
       next_run: this.#nextRun(id),
@@ -176,6 +177,7 @@ export class JobEngine {
       id,
       type: 'pipeline',
       kind: 'pipeline',
+      subtype: def.method,
       name: def.name,
       group: entry.attributes?.Category ?? 'Media and Files',
       note: def.method,
@@ -196,7 +198,7 @@ export class JobEngine {
       enabled: entry.enabled,
       running,
       queued: false,
-      pill: this.#pill(id, running, errors ? 'fail' : pending ? 'warn' : 'neutral'),
+      pill: this.#pill(id, running, errors ? 'danger' : pending ? 'warn' : 'neutral'),
       state,
       counts,
       pending,
