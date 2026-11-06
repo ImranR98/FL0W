@@ -14,7 +14,8 @@ FL0W merges the old Task Runner and File Pipelines apps into one job model:
 The unified UI lives at `/`; it covers task actions, uploads, the login
 browser, pipeline review, cleanup, trash and job settings. `/tasks` and
 `/pipelines` redirect there. Their APIs remain mounted for uploads, browser
-access and pipeline file actions.
+access and pipeline file actions. Use the Type filter, collapsible groups or
+Comfortable/Compact density to keep the list short.
 
 ## Layout
 

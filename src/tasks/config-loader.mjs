@@ -6,13 +6,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeSpec, specValid } from '@dscpln/server-kit';
 import { shellQuote } from './util.mjs';
-import {
-  attributeDefinitions,
-  defaultGroupBy,
-  readTaskMeta,
-  taskMetaFileFor,
-  TaskMetaError,
-} from './task-meta.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Project root: src/tasks/../..
@@ -281,19 +274,6 @@ export async function loadConfig(configPath = CONFIG_FILE) {
   local.lib ??= LIB_PATH;
   local.secrets = validateSecrets(local.secrets, "Config 'secrets'");
   if (!Array.isArray(groups)) throw new ConfigError("Config needs a 'groups' array");
-  const metaFile = taskMetaFileFor(p);
-  let meta;
-  try {
-    meta = readTaskMeta(metaFile);
-  } catch (err) {
-    if (err instanceof TaskMetaError) throw new ConfigError(err.message);
-    throw err;
-  }
-  const attributes = attributeDefinitions(meta?.attributes, groups.map((group) => group.name));
-  local.attributes = attributes;
-  local.default_group_by = defaultGroupBy(meta, attributes);
-  local.meta_file = metaFile;
-  local.task_meta = meta ?? { version: 1, attributes: [], default_group_by: local.default_group_by, tasks: {} };
   const tasks = [];
   const groupSeen = new Set();
   const taskSeen = new Set();
@@ -333,17 +313,6 @@ export async function loadConfig(configPath = CONFIG_FILE) {
       merged.secrets = validateSecrets(merged.secrets, `Task '${merged.name}': secrets`);
       merged.client_prune = validateClientPrune(merged.client_prune, `Task '${merged.name}': client_prune`);
       merged.actions = normalizeActions(merged.actions, merged.name);
-      const entry = meta?.tasks?.[merged.name];
-      merged.attributes = { ...(entry?.attributes ?? {}) };
-      // New tasks (or hand-written metadata entries with no attributes block)
-      // fall back to the config group. Once an entry has an attributes object,
-      // an empty Category is an intentional "Unassigned".
-      if (!Object.prototype.hasOwnProperty.call(entry ?? {}, 'attributes')) {
-        merged.attributes.Category = merged.group;
-      }
-      if (entry && Object.prototype.hasOwnProperty.call(entry, 'schedule')) {
-        merged.schedule = entry.schedule;
-      }
       merged.schedule = validateSchedule(merged, merged.schedule);
       merged.notify = merged.notify ?? (merged.schedule ? 'errors' : 'never');
       if (!NOTIFY_MODES.has(merged.notify)) {

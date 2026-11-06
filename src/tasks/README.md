@@ -96,8 +96,8 @@ Schedules persist their last handled occurrence and missed count under
 reads it through `/api/jobs`.
 
 Every task that can run unattended has a **Settings** dialog for its schedule
-and attributes. Changes are written to `task-meta.json` next to `config.mjs` and
-take effect immediately. A metadata entry overrides a fallback schedule in
+and attributes. Changes are written to `jobs-meta.json` next to `config.mjs` and
+take effect immediately. A jobs-meta entry overrides a fallback schedule in
 `config.mjs`.
 
 Scheduled runs are unattended, so the loader rejects `uploads`, `prompts`,
@@ -130,7 +130,7 @@ redacted from the logged command and output. Prefer `env` over argv:
 
 Copy `config.example.mjs` to `config.mjs` and edit it. It exports machine values
 plus a `groups:` array; a group's `defaults` merge under its tasks. The UI
-renders grouping and order from `task-meta.json`, not from the config array.
+renders grouping and order from `jobs-meta.json`, not from the config array.
 `secrets` is a top-level list of config tokens that should never appear in a
 logged command or output.
 
@@ -141,40 +141,40 @@ tokens: `{{repo_dir}}` (repo root, override with `BACKUPCTL_REPO_DIR`) and
 resolved paths.
 
 Every task needs `state_dir:`; it is the default `move`/`ingest` destination.
-Run state itself is centralized under `BACKUPCTL_STATE_DIR/tasks/`.
+Run state itself is centralized under `FL0W_STATE_DIR/tasks/`.
 
 If you keep helper scripts, put them on the machine or mount them into the
 container and reference them from the config, for example
 `scriptroot: '/path/to/scripts'` plus `bash '{{scriptroot}}/parse.py'`.
 
-### Task metadata (`task-meta.json`)
+### Job metadata (`jobs-meta.json`)
 
-Schedule and attribute edits are stored next to `config.mjs`:
+Schedule, category and notification edits are stored in the unified job file:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "attributes": [
     { "name": "Category", "values": ["Finance", "Media and Files"] },
     { "name": "Best run from", "values": ["Phone", "PC"] }
   ],
   "default_group_by": "Best run from",
-  "tasks": {
-    "Bank Statements": {
+  "jobs": {
+    "task:Bank Statements": {
       "attributes": { "Category": "Finance", "Best run from": "PC" },
-      "schedule": { "enabled": true, "days": [0], "at": "04:00", "catchUp": true }
+      "schedule": { "enabled": true, "days": [0], "at": "04:00", "catchUp": true },
+      "notify": "errors",
+      "enabled": true
     }
   }
 }
 ```
 
-The **Attributes** dialog manages definitions and the default grouping. The
-per-task **Settings** dialog edits values and the schedule. `Category` is
-required; other attributes are arbitrary. Removing an attribute or value
-removes it from tasks. The file is read at startup and rewritten atomically by
-the server. Keep its directory writable by Task Runner.
+`task-meta.json` is historical migration input only. FL0W reads it once when
+`jobs-meta.json` does not exist, then never uses it again. The task server no
+longer reads or writes task metadata at runtime.
 
-### Task fields
+## Task fields
 
 Common fields: `name`, `note` (help text in the drop zone), `state_dir`
 (required), `serial_key` (tasks sharing a key run one at a time), `host`
@@ -425,12 +425,12 @@ pseudo-terminal for tools that refuse non-TTY stdin, such as `lib.sh encrypt`.
 
 - `<FL0W_STATE_DIR>/tasks/<slug>.json`: `{task, ts, ok, summary, output}`.
   Legacy `<state_dir>/.backup-state-<slug>.json` is read once during upgrade.
-- `running.json` in `BACKUPCTL_STATE_DIR` marks in-flight tasks. After a crash
+- `running.json` in `FL0W_STATE_DIR` marks in-flight tasks. After a crash
   it shows as **Interrupted**.
 - `schedules/<task>.json` stores the last scheduled occurrence and missed count.
 - `<task>.<action>.json` stores an action's last result separately.
 - `staging/<task>/` is transient scratch space, cleared when a run ends.
-  Commands get a per-run `TMPDIR` under `BACKUPCTL_TMP_DIR` (default
+  Commands get a per-run `TMPDIR` under `FL0W_TMP_DIR` (default
   `~/Downloads/backupctl-tmp`).
 
 ## Permissions / fresh installs

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { AppHeader, Button, Dropzone, EmptyState, Field, getBrand, getJson, Page, postJson, putJson, showToast, ThemeToggle, Toasts, uploadFile as uploadFileRequest, usePolling } from '@dscpln/ui-kit'
 import { pruneTarGz } from '../../src/tasks/ui/src/lib/prune-tar-gz.js'
 import AttributesModal from '../../src/tasks/ui/src/components/AttributesModal.jsx'
@@ -64,6 +64,13 @@ export default function App() {
   const [groupBy, setGroupBy] = useState('')
   const [filterValue, setFilterValue] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [density, setDensity] = useState(() => {
+    try {
+      return localStorage.getItem('fl0w-density') === 'compact' ? 'compact' : 'comfortable'
+    } catch {
+      return 'comfortable'
+    }
+  })
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem('fl0w-collapsed-groups') || '[]'))
@@ -501,6 +508,30 @@ export default function App() {
   const filterValues = attributeValues(groupingAttribute, scopedJobs)
   const activeFilter = filterValues.includes(filterValue) ? filterValue : ''
   const visibleGroups = groupJobs(scopedJobs, groupBy, activeFilter, groupingAttribute)
+  const changeDensity = (value) => {
+    setDensity(value)
+    try {
+      localStorage.setItem('fl0w-density', value)
+    } catch {
+      // storage unavailable
+    }
+  }
+  const allCollapsed = visibleGroups.length > 0 && visibleGroups.every((group) => collapsedGroups.has(group.name))
+  const toggleAllGroups = () => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      for (const group of visibleGroups) {
+        if (allCollapsed) next.delete(group.name)
+        else next.add(group.name)
+      }
+      try {
+        localStorage.setItem('fl0w-collapsed-groups', JSON.stringify([...next]))
+      } catch {
+        // storage unavailable
+      }
+      return next
+    })
+  }
   const toggleGroup = (name) => {
     setCollapsedGroups((current) => {
       const next = new Set(current)
@@ -590,6 +621,17 @@ export default function App() {
                 <option value="pipeline">Pipelines</option>
               </select>
             </Field>
+            <Field label="Layout" htmlFor="job-density" className="task-toolbar__field">
+              <select
+                id="job-density"
+                data-testid="density"
+                value={density}
+                onChange={(event) => changeDensity(event.target.value)}
+              >
+                <option value="comfortable">Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </Field>
             <Field label="Group by" htmlFor="task-group-by" className="task-toolbar__field">
               <select
                 id="task-group-by"
@@ -616,6 +658,14 @@ export default function App() {
                 {filterValues.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </Field>
+            <Button
+              variant="outline"
+              icon={allCollapsed ? ChevronDown : ChevronUp}
+              data-testid="toggle-all-groups"
+              onClick={toggleAllGroups}
+            >
+              {allCollapsed ? 'Expand all' : 'Collapse all'}
+            </Button>
             <Button
               variant="outline"
               icon={SlidersHorizontal}
@@ -671,6 +721,7 @@ export default function App() {
                   onCancel={(jobEntry) => cancelRun(jobEntry.name)}
                   onLog={openLog}
                   onFiles={openPipeline}
+                  compact={density === 'compact'}
                 />
               ))}
             </div> : null}

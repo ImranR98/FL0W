@@ -23,12 +23,6 @@ main.page-wrap {
     margin-left: var(--space-3);
 }
 
-.task-card .card-title {
-    text-transform: none;
-    letter-spacing: -0.01em;
-    color: var(--text);
-}
-
 /* ---------- global drop ---------- */
 
 .global-drop {
@@ -131,33 +125,6 @@ main.page-wrap {
        long chip, queue filename or status line must not force the grid. */
     grid-template-columns: repeat(auto-fill, minmax(min(21rem, 100%), 1fr));
     gap: var(--space-3);
-}
-
-.task-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: var(--space-3);
-}
-
-/* Flex/grid children default to min-width:auto, which lets nowrap content
-   widen the whole card. Every direct child opts out; the leaf rules below
-   decide whether it wraps, truncates or scrolls. */
-.task-card > * {
-    min-width: 0;
-}
-
-.task-card .pill {
-    max-width: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-
-.task-card .card-title {
-    font-size: var(--fs-md);
-    margin: 0;
-    overflow-wrap: anywhere;
 }
 
 .pill {
@@ -302,23 +269,6 @@ main.page-wrap {
 .attribute-chip__name {
     color: var(--text-muted);
     font-weight: 600;
-}
-
-.card-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    align-items: center;
-    min-width: 0;
-    margin-top: auto;
-}
-
-.card-actions > * {
-    max-width: 100%;
-}
-
-.card-actions > :first-child {
-    margin-left: auto;
 }
 
 .action-status-list {

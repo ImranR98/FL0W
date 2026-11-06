@@ -1,4 +1,5 @@
-import { Download, FolderOpen, Play, ScrollText, Settings, Square } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronUp, Download, FolderOpen, Play, ScrollText, Settings, Square } from 'lucide-react'
 import { Button, StatusPill } from '@dscpln/ui-kit'
 import JobTypeBadge from './JobTypeBadge.jsx'
 import PipelineJobBody from './PipelineJobBody.jsx'
@@ -38,7 +39,9 @@ export default function JobCard({
   onToggleBrowser,
   onQueueFiles,
   onRemoveQueued,
+  compact = false,
 }) {
+  const [expanded, setExpanded] = useState(false)
   const files = queues[job.name] ?? []
   const isPreparing = preparing[job.name] != null
   const isUploading = uploading[job.name] != null
@@ -80,10 +83,17 @@ export default function JobCard({
 
   const configActions = job.actions ?? []
   const hasActionState = configActions.some((action) => action.state)
+  const hasBody = job.type === 'pipeline' || Boolean(job.uploads || job.note || job.browser)
+  const showBody = !compact || expanded
+  const compactSummary = job.type === 'pipeline'
+    ? `${job.pending ?? 0} pending · ${(job.counts?.done ?? 0) + (job.counts?.duplicate ?? 0)} processed · ${job.errors ?? 0} issues`
+    : job.uploads && files.length
+      ? `${files.length} file${files.length === 1 ? '' : 's'} queued`
+      : job.note || ''
 
   return (
     <section
-      className={`card job-card job-card--${job.type}`}
+      className={`card job-card job-card--${job.type}${compact ? ' job-card--compact' : ''}${compact && showBody ? ' is-expanded' : ''}`}
       data-job-id={job.id}
       data-testid={`${job.type}-${job.name}`}
     >
@@ -117,25 +127,31 @@ export default function JobCard({
 
       {job.avail === false ? <span className="alert-badge badge-unavail">{job.avail_reason || 'Unavailable'}</span> : null}
 
-      <div className="job-card__body">
-        {job.type === 'pipeline' ? (
-          <PipelineJobBody job={job} />
-        ) : (
-          <TaskJobBody
-            task={job}
-            preparing={preparing}
-            uploading={uploading}
-            queues={queues}
-            browserAvailable={browserAvailable}
-            openBrowsers={openBrowsers}
-            onToggleBrowser={onToggleBrowser}
-            onQueueFiles={onQueueFiles}
-            onRemoveQueued={onRemoveQueued}
-          />
-        )}
-      </div>
+      {compact && !showBody && compactSummary ? (
+        <p className="job-card__compact-summary">{compactSummary}</p>
+      ) : null}
 
-      {job.export_url || configActions.length || hasActionState ? (
+      {showBody ? (
+        <div className="job-card__body">
+          {job.type === 'pipeline' ? (
+            <PipelineJobBody job={job} />
+          ) : (
+            <TaskJobBody
+              task={job}
+              preparing={preparing}
+              uploading={uploading}
+              queues={queues}
+              browserAvailable={browserAvailable}
+              openBrowsers={openBrowsers}
+              onToggleBrowser={onToggleBrowser}
+              onQueueFiles={onQueueFiles}
+              onRemoveQueued={onRemoveQueued}
+            />
+          )}
+        </div>
+      ) : null}
+
+      {(!compact || showBody) && (job.export_url || configActions.length || hasActionState) ? (
         <div className="job-card__extras">
           <div className="job-card__extra-actions">
             {job.export_url ? (
@@ -184,6 +200,17 @@ export default function JobCard({
         <Button variant="outline" icon={ScrollText} onClick={() => onLog(job)}>Log</Button>
         {job.type === 'pipeline' ? (
           <Button variant="outline" icon={FolderOpen} onClick={() => onFiles(job)}>Files</Button>
+        ) : null}
+        {compact && hasBody ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={showBody ? ChevronUp : ChevronDown}
+            aria-expanded={showBody}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {showBody ? 'Hide' : 'Details'}
+          </Button>
         ) : null}
       </div>
     </section>

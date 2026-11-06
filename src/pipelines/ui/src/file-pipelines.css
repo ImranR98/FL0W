@@ -1,25 +1,5 @@
 /* File Pipelines: pipeline-folder additions on top of the shared kit. */
 
-.pipeline-meta {
-    display: grid;
-    gap: var(--space-1);
-    margin-top: var(--space-3);
-}
-
-.pipeline-meta__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-3);
-    font-size: var(--fs-sm);
-}
-
-.pipeline-meta__summary {
-    margin: var(--space-1) 0 0;
-    font-size: var(--fs-xs);
-    overflow-wrap: anywhere;
-}
-
 .folder-edit textarea {
     min-height: 6rem;
     font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -33,13 +13,6 @@
 }
 
 /* ---------- folder cards ---------- */
-
-.folder-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(25rem, 1fr));
-    gap: var(--space-4);
-    align-items: stretch;
-}
 
 .folder-card {
     --method-color: var(--accent);
@@ -180,12 +153,6 @@
     overflow-wrap: anywhere;
 }
 
-.file__dest {
-    font-size: var(--fs-xs);
-    color: var(--text-muted);
-    overflow-wrap: anywhere;
-}
-
 .file__meta {
     display: flex;
     flex-wrap: wrap;
@@ -238,10 +205,6 @@
 
 .trash__list {
     margin-top: var(--space-2);
-}
-
-.trash__day {
-    margin-top: var(--space-1);
 }
 
 .trash-actions {
@@ -351,12 +314,6 @@
 
 @media (max-width: 62rem) {
     .side-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
-@media (max-width: 44rem) {
-    .folder-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 }

@@ -233,3 +233,27 @@ button.category-header:hover .category-title {
 .global-drop__dropzone .btn {
     display: none;
 }
+
+/* Compact density: keep the common metadata and actions, fold the body. */
+.job-card--compact {
+    gap: var(--space-1);
+    padding: var(--space-3);
+}
+
+.job-card--compact .job-card__actions {
+    padding-top: var(--space-1);
+    border-top: 0;
+}
+
+.job-card--compact .attribute-chip {
+    font-size: var(--fs-2xs);
+}
+
+.job-card__compact-summary {
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

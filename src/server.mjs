@@ -10,6 +10,7 @@ import { Daemon } from './pipelines/src/daemon.js'
 import { ApiServer } from './pipelines/src/api/index.js'
 import { JobEngine } from './jobs/engine.mjs'
 import { metaPath } from './jobs/meta.mjs'
+import { taskMetaFileFor } from './tasks/task-meta.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -57,7 +58,7 @@ export async function startFl0w(options = {}) {
     configRoot,
     stateDir: process.env.BACKUPCTL_STATE_DIR,
     metaFile: metaPath(path.dirname(process.env.BACKUPCTL_CONFIG_FILE)),
-    legacyMetaFile: taskServer.TASK_META_FILE,
+    legacyMetaFile: taskMetaFileFor(process.env.BACKUPCTL_CONFIG_FILE),
     log,
   })
   await engine.start()

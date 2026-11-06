@@ -26,14 +26,12 @@ import {
   Scheduler,
 } from '@dscpln/server-kit';
 import {
-  CONFIG_FILE,
   ConfigError,
   ConfigMissingError,
   LIB_PATH,
   loadConfig,
 } from './config-loader.mjs';
 import {
-  taskMetaFileFor,
 } from './task-meta.mjs';
 import { expand, resolve, shellSafe } from './template.mjs';
 import {
@@ -393,10 +391,7 @@ export let LOCAL = {};
 export let TASK_LIST = [];
 export let MISSING_CONFIG = false;
 export let TASK_MAP = new Map();
-export let TASK_META_FILE = taskMetaFileFor(CONFIG_FILE);
-
 export async function boot(configPath = undefined) {
-  TASK_META_FILE = taskMetaFileFor(configPath ?? CONFIG_FILE);
   try {
     [LOCAL, TASK_LIST] = await loadConfig(configPath);
     LOCAL.host = instanceHost();
@@ -804,8 +799,6 @@ export function createApp(options = {}) {
             tasks: tasks.filter((task) => task.group === name),
           })),
           tasks,
-          attributes: LOCAL.attributes ?? [],
-          default_group_by: LOCAL.default_group_by ?? 'Category',
           missing_config: MISSING_CONFIG,
           browser: Boolean(browserRemote),
         })

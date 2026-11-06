@@ -243,51 +243,19 @@ test('loadConfig: script/move/ingest shorthands normalize into commands', async 
   assert.equal(bctl.resolve(tasks[4].commands, local), `bash ${lib} ingest '/tmp/G' 'jq -r ".id" actor.json' {{uploads}}`);
 });
 
-test('loadConfig: task-meta supplies attributes, schedules and grouping', async () => {
+test('loadConfig no longer reads task-meta as runtime metadata', async () => {
   const configPath = makeConfig([task('Meta Task', { commands: 'true' })])
   writeMeta(configPath, {
     version: 1,
-    attributes: [
-      { name: 'Category', values: ['G', 'Elsewhere'] },
-      { name: 'Best run from', values: ['Phone', 'PC'] },
-    ],
-    default_group_by: 'Best run from',
-    tasks: {
-      'Meta Task': {
-        attributes: { Category: 'Elsewhere', 'Best run from': 'Phone' },
-        schedule: { enabled: true, days: [1], at: '6:15', catchUp: false },
-      },
-    },
+    attributes: [{ name: 'Category', values: ['Elsewhere'] }],
+    default_group_by: 'Category',
+    tasks: { 'Meta Task': { attributes: { Category: 'Elsewhere' }, schedule: { enabled: true, days: [1], at: '06:15' } } },
   })
   const [local, tasks] = await bctl.loadConfig(configPath)
-  assert.deepEqual(local.attributes, [
-    { name: 'Category', values: ['G', 'Elsewhere'] },
-    { name: 'Best run from', values: ['Phone', 'PC'] },
-  ])
-  assert.equal(local.default_group_by, 'Best run from')
-  assert.deepEqual(tasks[0].attributes, { Category: 'Elsewhere', 'Best run from': 'Phone' })
-  assert.deepEqual(tasks[0].schedule, { enabled: true, days: [1], at: '06:15', catchUp: false })
-
-  // Metadata schedules obey the same unattended-only rule as config ones.
-  const badConfig = makeConfig([task('Meta Upload', { commands: 'true', uploads: true, glob: '*.txt' })])
-  writeMeta(badConfig, {
-    version: 1,
-    attributes: [{ name: 'Category', values: ['G'] }],
-    default_group_by: 'Category',
-    tasks: { 'Meta Upload': { schedule: { enabled: true, days: [], at: '04:00' } } },
-  })
-  await assert.rejects(bctl.loadConfig(badConfig), /scheduled tasks cannot use 'uploads'/)
-
-  // A task entry that explicitly has an attributes object can clear Category.
-  const clearedConfig = makeConfig([task('Cleared Meta', { commands: 'true' })])
-  writeMeta(clearedConfig, {
-    version: 1,
-    attributes: [{ name: 'Category', values: ['G'] }],
-    default_group_by: 'Category',
-    tasks: { 'Cleared Meta': { attributes: {} } },
-  })
-  const [, cleared] = await bctl.loadConfig(clearedConfig)
-  assert.deepEqual(cleared[0].attributes, {})
+  assert.equal(local.attributes, undefined)
+  assert.equal(local.default_group_by, undefined)
+  assert.equal(tasks[0].attributes, undefined)
+  assert.equal(tasks[0].schedule, null)
 })
 
 test('loadConfig: actions normalize and validate', async () => {
