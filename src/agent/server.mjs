@@ -137,8 +137,8 @@ export function createAgentServer(config) {
               'Content-Length': result.size,
               'Content-Disposition': `attachment; filename="${target.id}.tar.gz"`,
               'Cache-Control': 'no-store',
-              'X-DSCPLN-SHA256': result.sha256,
-              'X-DSCPLN-Summary': `archive ${target.id} ${result.size} bytes`,
+              'X-FL0W-SHA256': result.sha256,
+              'X-FL0W-Summary': `archive ${target.id} ${result.size} bytes`,
             });
             await new Promise((resolve, reject) => {
               const stream = fs.createReadStream(result.archive);

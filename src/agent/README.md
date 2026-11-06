@@ -168,8 +168,8 @@ Optional TLS:
 
 The archive response includes:
 
-- `X-DSCPLN-SHA256`: archive SHA-256.
-- `X-DSCPLN-Summary`: a short summary.
+- `X-FL0W-SHA256`: archive SHA-256.
+- `X-FL0W-Summary`: a short summary.
 
 Only one job runs at a time per agent; concurrent requests get `429`.
 

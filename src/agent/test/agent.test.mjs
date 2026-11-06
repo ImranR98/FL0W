@@ -77,7 +77,7 @@ test('agent enrolls a client token and archives only the configured root', async
     const response = await post(base, '/v1/jobs/example/archive', TOKEN);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /application\/gzip/);
-    assert.match(response.headers.get('x-dscpln-sha256'), /^[0-9a-f]{64}$/);
+    assert.match(response.headers.get('x-fl0w-sha256'), /^[0-9a-f]{64}$/);
     const archive = path.join(root, 'out.tar.gz');
     fs.writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
     const extracted = path.join(root, 'extracted');
