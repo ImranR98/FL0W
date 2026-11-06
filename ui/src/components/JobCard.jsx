@@ -89,11 +89,11 @@ export default function JobCard({
     >
       <div className="card__header job-card__header">
         <h2 className="card-title">{job.name}</h2>
-        <StatusPill tone={statusTone}>{statusText}</StatusPill>
       </div>
 
-      <div className="job-card__type">
+      <div className="job-card__badges">
         <JobTypeBadge job={job} />
+        <StatusPill tone={statusTone}>{statusText}</StatusPill>
       </div>
 
       {chips.length ? (
