@@ -164,6 +164,21 @@ test('loadConfig: validates groups, tasks, defaults, duplicates', async () => {
     /Duplicate task name/
   );
   await assert.rejects(
+    bctl.loadConfig(writeConfig('slash.mjs', {
+      groups: [{ name: 'G', tasks: [{ name: 'A/B', state_dir: '/x', commands: 'true' }] }],
+    })),
+    /must not contain path separators/
+  );
+  await assert.rejects(
+    bctl.loadConfig(writeConfig('slug.mjs', {
+      groups: [{ name: 'G', tasks: [
+        { name: 'A.B', state_dir: '/x', commands: 'true' },
+        { name: 'A_B', state_dir: '/y', commands: 'true' },
+      ]}],
+    })),
+    /would share state files/
+  );
+  await assert.rejects(
     bctl.loadConfig(writeConfig('dupgroup.mjs', {
       groups: [
         { name: 'G', tasks: [] },
@@ -199,6 +214,14 @@ test('loadConfig: validates groups, tasks, defaults, duplicates', async () => {
     })),
     /relative archive path/
   );
+});
+
+test('runner caps captured output and reports truncation', async () => {
+  const limit = bctl.MAX_CAPTURE_BYTES;
+  const result = await bctl.shCapture(`head -c ${limit + 1024} /dev/zero | tr '\\0' x`);
+  assert.equal(result.rc, 0);
+  assert.ok(result.out.length <= limit + 80, `captured ${result.out.length} bytes`);
+  assert.match(result.out, /output truncated/);
 });
 
 test('loadConfig: script/move/ingest shorthands normalize into commands', async () => {
@@ -995,127 +1018,6 @@ test('API: /api/tasks returns groups in config order', async () => {
   assert.equal(res.json.missing_config, false);
   await close();
 });
-
-test('API: task settings persist schedules and attributes to task-meta.json', async () => {
-  const name = 'Schedule UI Test'
-  const t = task(name, { commands: 'true' })
-  const configPath = makeConfig([t])
-  const metaFile = writeMeta(configPath, {
-    version: 1,
-    attributes: [
-      { name: 'Category', values: ['G', 'Other'] },
-      { name: 'Best run from', values: ['Phone', 'PC'] },
-    ],
-    default_group_by: 'Best run from',
-    tasks: { [name]: { attributes: { Category: 'G', 'Best run from': 'Phone' } } },
-  })
-  await bootWith(configPath)
-  const { req, close } = await api()
-  try {
-    const saved = await req('PUT', `/api/tasks/${encodeURIComponent(name)}/settings`, {
-      schedule: { enabled: true, days: [1, 3], at: '07:30', catchUp: false },
-      attributes: { Category: 'Other', 'Best run from': 'PC' },
-    })
-    assert.equal(saved.status, 200)
-    assert.deepEqual(saved.json.schedule, { enabled: true, days: [1, 3], at: '07:30', catchUp: false })
-    assert.ok(saved.json.next_run)
-    assert.equal(saved.json.scheduled, true)
-    assert.deepEqual(saved.json.attributes, { Category: 'Other', 'Best run from': 'PC' })
-
-    const list = await req('GET', '/api/tasks')
-    const shown = list.json.tasks.find((entry) => entry.name === name)
-    assert.equal(shown.schedulable, true)
-    assert.equal(shown.schedule.enabled, true)
-    assert.equal(shown.schedule.at, '07:30')
-    assert.equal(shown.attributes['Best run from'], 'PC')
-    assert.equal(list.json.default_group_by, 'Best run from')
-
-    const persisted = JSON.parse(fs.readFileSync(metaFile, 'utf8'))
-    assert.equal(persisted.tasks[name].schedule.at, '07:30')
-    assert.equal(persisted.tasks[name].attributes.Category, 'Other')
-
-    const disabled = await req('PUT', `/api/tasks/${encodeURIComponent(name)}/settings`, {
-      schedule: { enabled: false, at: '07:30' },
-    })
-    assert.equal(disabled.status, 200)
-    assert.equal(disabled.json.schedule.enabled, false)
-    assert.equal(disabled.json.next_run, null)
-    const afterDisable = JSON.parse(fs.readFileSync(metaFile, 'utf8'))
-    assert.equal(afterDisable.tasks[name].schedule.enabled, false)
-    assert.equal(afterDisable.tasks[name].attributes['Best run from'], 'PC')
-  } finally {
-    bctl.stopSchedulers()
-    await close()
-  }
-
-  const uploadTask = task('Schedule Needs Upload', {
-    uploads: true,
-    glob: '*.txt',
-    commands: 'true',
-  })
-  await bootWith(makeConfig([uploadTask]))
-  const second = await api()
-  try {
-    const rejected = await second.req('PUT', `/api/tasks/${encodeURIComponent('Schedule Needs Upload')}/settings`, {
-      schedule: { enabled: true, at: '07:30' },
-    })
-    assert.equal(rejected.status, 400)
-    assert.match(rejected.json.detail, /cannot be scheduled/)
-  } finally {
-    await second.close()
-  }
-})
-
-test('API: attributes manager updates definitions and prunes task values', async () => {
-  const t1 = task('Attr One', { commands: 'true' })
-  const t2 = task('Attr Two', { commands: 'true' })
-  const configPath = makeConfig([t1, t2])
-  const metaFile = writeMeta(configPath, {
-    version: 1,
-    attributes: [
-      { name: 'Category', values: ['G'] },
-      { name: 'Best run from', values: ['Phone', 'PC'] },
-    ],
-    default_group_by: 'Best run from',
-    tasks: {
-      'Attr One': { attributes: { Category: 'G', 'Best run from': 'Phone' } },
-      'Attr Two': { attributes: { Category: 'G', 'Best run from': 'PC' } },
-    },
-  })
-  await bootWith(configPath)
-  const { req, close } = await api()
-  try {
-    const saved = await req('PUT', '/api/attributes', {
-      attributes: [
-        { name: 'Category', values: ['G'] },
-        { name: 'Best run from', values: ['Phone'] },
-        { name: 'Frequency', values: ['Weekly'] },
-      ],
-      default_group_by: 'Category',
-    })
-    assert.equal(saved.status, 200)
-    assert.equal(saved.json.default_group_by, 'Category')
-
-    const list = await req('GET', '/api/tasks')
-    const one = list.json.tasks.find((entry) => entry.name === 'Attr One')
-    const two = list.json.tasks.find((entry) => entry.name === 'Attr Two')
-    assert.deepEqual(one.attributes, { Category: 'G', 'Best run from': 'Phone' })
-    assert.deepEqual(two.attributes, { Category: 'G' })
-
-    const persisted = JSON.parse(fs.readFileSync(metaFile, 'utf8'))
-    assert.deepEqual(persisted.attributes.map((entry) => entry.name), ['Category', 'Best run from', 'Frequency'])
-    assert.equal(persisted.tasks['Attr Two'].attributes['Best run from'], undefined)
-
-    const rejected = await req('PUT', '/api/attributes', {
-      attributes: [{ name: 'Best run from', values: ['Phone'] }],
-      default_group_by: 'Best run from',
-    })
-    assert.equal(rejected.status, 400)
-    assert.match(rejected.json.detail, /Category/)
-  } finally {
-    await close()
-  }
-})
 
 test('API: card actions run without check gating and keep separate state', async () => {
   const name = 'Action Task'

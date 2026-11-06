@@ -27,6 +27,7 @@ import ReviewDialog from '../../src/pipelines/ui/src/components/dialogs/ReviewDi
 import SetDateDialog from '../../src/pipelines/ui/src/components/dialogs/SetDateDialog.jsx'
 import SettingsDialog from '../../src/pipelines/ui/src/components/dialogs/SettingsDialog.jsx'
 import JobSettingsDialog from './components/JobSettingsDialog.jsx'
+import { jobSubtypeLabel } from './components/JobTypeBadge.jsx'
 import { folderStats } from '../../src/pipelines/ui/src/lib/view.js'
 
 const emptyTrash = { entries: [], selectAll: false }
@@ -332,7 +333,7 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
       <AppHeader
         brand={getBrand('fl0w')}
         name={currentJob.name}
-        subtitle={`Pipeline · ${currentJob.method}`}
+        subtitle={`Pipeline · ${jobSubtypeLabel(currentJob)}`}
         back={{ href: '#/', label: 'All jobs' }}
         meta={<span className={`status-tag status-tag--${statusTone}`}><span>{statusText}</span></span>}
         actions={(
@@ -400,7 +401,7 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
               ))}
             </ul>
           ) : (
-            <EmptyState title="No runs recorded yet" description="Runs triggered by the watcher, a schedule, or Process now appear here." />
+            <EmptyState title="No runs recorded yet" description="Runs triggered by the watcher, a schedule, or Run appear here." />
           )}
         </section>
 

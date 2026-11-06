@@ -83,6 +83,8 @@ export function normalizeConfig(raw) {
         ...(folder.attributes && typeof folder.attributes === "object" ? folder.attributes : {}),
         Category: category,
       },
+      // Legacy migration input only. Runtime schedules live in
+      // jobs-meta.json and are owned by the unified JobEngine.
       schedule: normalizeSpec(folder.schedule),
       source: expandPath(folder.source) || "",
       destination: expandPath(folder.destination),

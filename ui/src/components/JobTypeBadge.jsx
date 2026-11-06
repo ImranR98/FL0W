@@ -12,11 +12,16 @@ const PIPELINE_LABELS = {
   'reviewed-audio': 'Reviewed audio',
 }
 
+export function jobSubtypeLabel(job) {
+  const isPipeline = job.type === 'pipeline'
+  const labels = isPipeline ? PIPELINE_LABELS : TASK_LABELS
+  return labels[job.subtype] ?? job.subtype ?? (isPipeline ? 'Pipeline' : 'Task')
+}
+
 export default function JobTypeBadge({ job }) {
   const isPipeline = job.type === 'pipeline'
   const typeLabel = isPipeline ? 'Pipeline' : 'Task'
-  const labels = isPipeline ? PIPELINE_LABELS : TASK_LABELS
-  const subtypeLabel = labels[job.subtype] ?? job.subtype ?? (isPipeline ? 'Pipeline' : 'Task')
+  const subtypeLabel = jobSubtypeLabel(job)
   const Icon = isPipeline ? Workflow : job.subtype === 'webhook' ? Webhook : Terminal
   return (
     <span

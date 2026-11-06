@@ -1,46 +1,47 @@
-# Task Runner
+# FL0W Tasks
 
-**Run scheduled and on-demand tasks from a web UI.**
+**Scheduled and on-demand commands inside FL0W.**
 
-Task Runner turns Bash commands from a config file into cards. Each card can
-have a drop zone, prompts, live logs, a schedule and its own run history. Use it
-for backups, exports, sync jobs and other repeatable commands that are easier to
-run from a page than from a terminal.
+Task jobs turn Bash commands and HTTP webhooks from `config.mjs` into cards.
+Each card can have a drop zone, prompts, live logs, a schedule, attributes and
+its own run history. Use it for backups, exports, sync jobs and other repeatable
+work that is easier to run from a page than from a terminal.
 
 ## At a glance
 
 | | |
 |---|---|
-| Runs at | `/tasks` (or port `8085` locally) |
-| Config | `BACKUPCTL_CONFIG_FILE`, a `config.mjs` file |
-| State | `BACKUPCTL_STATE_DIR`, default `~/.backupctl` |
-| Schedules | Per task, with optional catch-up after downtime |
+| Runs at | `/` in the unified FL0W UI; task APIs under `/tasks/api` |
+| Config | `FL0W_CONFIG`, default `config/config.mjs` |
+| State | `FL0W_STATE_DIR`, default `~/.backupctl` |
+| Metadata | `jobs-meta.json` (categories, schedules, notifications, enabled) |
+| Schedules | Per job, with optional catch-up after downtime |
 | Tasks | Bash commands, uploads, prompts, webhooks and helper scripts |
 
 ## Quick start
 
-From the D$CPLN repository root:
+From the FL0W repository root:
 
 ```sh
 npm install
-cp apps/task-runner/config.example.mjs apps/task-runner/config.mjs
-npm run task-runner
+cp config.example.mjs config/config.mjs
+cp config.example.json config/apps/file-pipelines/config.json
+npm start
 ```
 
-This starts the server at <http://127.0.0.1:8080> and opens the browser.
-`--no-browser` skips the browser, and `--port 8081` changes the port; `--help`
-shows the options.
+Open <http://127.0.0.1:8085>. The unified UI is `/`; the old `/tasks` URL
+redirects there while `/tasks/api/*` remains available for uploads and browser
+access.
 
-To run it in a container, mount the config and a writable state directory:
+To run the app in a container, mount the config and a writable state directory:
 
 ```sh
-BACKUPCTL_CONFIG_FILE=/config/config.mjs \
-BACKUPCTL_STATE_DIR=/data/state \
-node server.mjs --host 0.0.0.0 --port 8085 --no-browser
+FL0W_CONFIG=/config/config.mjs \
+FL0W_STATE_DIR=/data/state \
+node src/server.mjs
 ```
 
-Keep the config out of the public source tree. For a multi-app deployment, use
-the private [config template](../../config-template/README.md).
+Keep the config out of the public source tree.
 
 ## Core ideas
 
@@ -91,8 +92,8 @@ schedule: { enabled: true, days: [], at: '02:00', catchUp: true }
 - `catchUp` runs an occurrence missed while the instance was down.
 
 Schedules persist their last handled occurrence and missed count under
-`BACKUPCTL_STATE_DIR/schedules/`. The card shows the next run, and the Portal
-reads it through `/api/tasks`.
+`FL0W_STATE_DIR/schedules/`. The card shows the next run, and DA5H
+reads it through `/api/jobs`.
 
 Every task that can run unattended has a **Settings** dialog for its schedule
 and attributes. Changes are written to `task-meta.json` next to `config.mjs` and
@@ -105,7 +106,7 @@ already running, unavailable, or blocked by its `serial_key` is counted as
 missed rather than queued. Set `BACKUPCTL_SCHEDULES=0` on a second instance so
 only one machine fires shared schedules.
 
-Notifications go through the Portal (`DSCPLN_PORTAL_URL`) with
+Notifications go through DA5H (`NOTIFY_RELAY_URL`) with
 `notify: never|errors|always`. The default for scheduled tasks is `errors`;
 `notify_name` overrides the notification title.
 
@@ -333,7 +334,7 @@ reach back far enough.
   env: { BALANCE_TOKEN: '{{balance_token}}' },
   commands: [
     `your-scraper > "$TMPDIR/transactions.txt"`,
-    `node '{{repo_dir}}/apps/task-runner/examples/balance-import.mjs' --input "$TMPDIR/transactions.txt" ` +
+    `node '{{repo_dir}}/src/tasks/examples/balance-import.mjs' --input "$TMPDIR/transactions.txt" ` +
       `--balance-url '{{balance_url}}' --balance-token "$BALANCE_TOKEN" --notify-url '{{portal_url}}'`,
   ],
   summary_last_line: true,
@@ -343,7 +344,7 @@ reach back far enough.
 - `--input`: scraper output file, or `-` for stdin.
 - `--balance-url` / `--balance-token`: Balance external API base path and
   bearer token. Pass the token through `env` and list it in `secrets`.
-- `--notify-url`: optional Portal relay for the zero-duplicate warning.
+- `--notify-url`: optional DA5H relay for the zero-duplicate warning.
 - `--after <regex>`: only consider lines after the last matching line.
 - `--dry-run`: check and report without writing.
 
@@ -361,7 +362,7 @@ and skipped counts.
 2. **Make it visible.** Locally, reference an absolute path. In a container,
    mount a tool folder read-only and point `scriptroot` at it, or bake the tool
    into a custom image. The bundled example lives at
-   `apps/task-runner/examples/hello-tool.sh`; the Balance import tool is a
+   `src/tasks/examples/hello-tool.sh`; the Balance import tool is a
    fuller Node example.
 3. **Set `scriptroot`** and call the tool from a task:
 
@@ -422,7 +423,7 @@ pseudo-terminal for tools that refuse non-TTY stdin, such as `lib.sh encrypt`.
 
 ## State
 
-- `<BACKUPCTL_STATE_DIR>/tasks/<slug>.json`: `{task, ts, ok, summary, output}`.
+- `<FL0W_STATE_DIR>/tasks/<slug>.json`: `{task, ts, ok, summary, output}`.
   Legacy `<state_dir>/.backup-state-<slug>.json` is read once during upgrade.
 - `running.json` in `BACKUPCTL_STATE_DIR` marks in-flight tasks. After a crash
   it shows as **Interrupted**.
@@ -451,13 +452,11 @@ permission probe so this cannot regress silently.
 
 ## API
 
-`GET /api/tasks` returns tasks, groups, attributes, availability and run state.
+`GET /api/jobs` returns the unified job DTO; `/tasks/api/tasks` remains as a legacy read-only view.
 Other endpoints:
 
 | Method | Path |
 |---|---|
-| `PUT` | `/api/tasks/{task}/settings` |
-| `PUT` | `/api/attributes` |
 | `POST` | `/api/detect?name=` |
 | `POST` | `/api/upload/{task}?name=` |
 | `POST` | `/api/run/{task}` |
@@ -496,8 +495,8 @@ Requires Node.js 26+ for the monorepo commands (the app itself supports Node
 22+; the image uses Node 26).
 
 ```sh
-npm test --workspace dscpln-task-runner
-npm run build:ui --workspace dscpln-task-runner
+npm test
+npm run build:ui
 ```
 
 `ui/` is a React + Vite app built into `static/` and served by the Node server.

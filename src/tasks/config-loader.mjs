@@ -33,6 +33,15 @@ export class ConfigError extends Error {}
 
 const HEREDOC_WRAP = `bash -c 'TMP=$(mktemp); cat > "$TMP"; bash "$TMP"; RC=$?; rm -f "$TMP"; exit $RC' <<'BASH_SCRIPT'`;
 
+const slugifyTaskName = (name) => String(name).replace(/[^a-zA-Z0-9_-]/g, '_');
+const hasUnsafeTaskNameChars = (name) => {
+  const value = String(name);
+  return /[/\\]/.test(value) || [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+};
+
 /* Task shorthands, normalized into `commands` at load: `script:` is a bash
  * body wrapped in a temp-file heredoc (children can't eat the script from
  * stdin); `move:`/`ingest:` are the common "file this drop into a
@@ -298,6 +307,9 @@ export async function loadConfig(configPath = CONFIG_FILE) {
     for (const t of g.tasks ?? []) {
       const merged = { ...g.defaults, ...t, group: g.name };
       if (!merged.name) throw new ConfigError("Every task needs a 'name'");
+      if (hasUnsafeTaskNameChars(merged.name)) {
+        throw new ConfigError(`Task '${merged.name}': name must not contain path separators or control characters`);
+      }
       if (!merged.state_dir) throw new ConfigError(`Task '${merged.name}' needs a 'state_dir' for its run state`);
       if (merged.webhook !== undefined) {
         if (merged.script || merged.move || merged.ingest) {
@@ -343,6 +355,15 @@ export async function loadConfig(configPath = CONFIG_FILE) {
       merged.notify_name ??= merged.name;
       tasks.push(merged);
     }
+  }
+  const slugOwners = new Map();
+  for (const task of tasks) {
+    const slug = slugifyTaskName(task.name);
+    const owner = slugOwners.get(slug);
+    if (owner) {
+      throw new ConfigError(`Tasks '${owner}' and '${task.name}' would share state files ('${slug}'); rename one`);
+    }
+    slugOwners.set(slug, task.name);
   }
   return [local, tasks];
 }

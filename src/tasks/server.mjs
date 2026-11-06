@@ -23,7 +23,6 @@ import {
   Notifier,
   normalizeSpec,
   occurrenceAfter,
-  occurrenceBefore,
   Scheduler,
 } from '@dscpln/server-kit';
 import {
@@ -32,13 +31,9 @@ import {
   ConfigMissingError,
   LIB_PATH,
   loadConfig,
-  validateSchedule,
 } from './config-loader.mjs';
 import {
-  normalizeAttributeDefinitions,
-  TaskMetaError,
   taskMetaFileFor,
-  writeTaskMeta,
 } from './task-meta.mjs';
 import { expand, resolve, shellSafe } from './template.mjs';
 import {
@@ -64,7 +59,7 @@ import {
   tmpRoot,
 } from './state.mjs';
 import { DAY_SECONDS, humanAgo, pathFound, shellQuote, splitLines } from './util.mjs';
-import { killpg, makeLogger, sh, shCapture } from './runner.mjs';
+import { killpg, makeLogger, MAX_CAPTURE_BYTES, sh, shCapture } from './runner.mjs';
 import { runWebhook } from './webhook.mjs';
 
 // The modules above also implement the documented test surface; re-export them
@@ -144,6 +139,7 @@ export async function runCommands(ctx) {
     .filter((value) => value !== undefined && !/^\{\{[^}]+\}\}$/.test(String(value)))
     .map(String);
   const output = [];
+  let outputBytes = 0;
   const cwd = expand(resolve(task.cwd ?? '.', ctx.local));
   const groups = ctx.groups ?? new Set();
   const env = { TMPDIR: ctx.tmpdir };
@@ -199,7 +195,10 @@ export async function runCommands(ctx) {
     });
     if (!result.ok) return [false, result.summary];
     webhookSummary = result.summary;
-    if (capture) output.push(result.summary);
+    if (capture) {
+      output.push(result.summary);
+      outputBytes += result.summary.length + 1;
+    }
   }
   if (!cmds.length && webhookSummary !== null) {
     return [true, webhookSummary];
@@ -211,9 +210,19 @@ export async function runCommands(ctx) {
       const { rc: r, out, err } = await shCapture(resolved, { cwd, redact, env, groups, ...runAs });
       rc = r;
       const lines = splitLines(out);
-      for (const line of lines) ctx.log(line);
+      for (const line of lines) {
+        ctx.log(line);
+        if (outputBytes >= MAX_CAPTURE_BYTES) continue;
+        const next = line.length + 1;
+        if (outputBytes + next > MAX_CAPTURE_BYTES) {
+          output.push(`[output truncated at ${MAX_CAPTURE_BYTES} bytes]`);
+          outputBytes = MAX_CAPTURE_BYTES;
+        } else {
+          output.push(line);
+          outputBytes += next;
+        }
+      }
       if (err.trim()) ctx.log(err.trim());
-      output.push(...lines);
     } else {
       rc = await sh(resolved, { cwd, log: ctx.log, redact, env, groups, ...runAs });
     }
@@ -376,37 +385,6 @@ export function actionTaskFor(task, action) {
     actions: [],
     schedule: null,
   }
-}
-
-function taskMeta() {
-  const meta = LOCAL.task_meta ?? {}
-  meta.version ??= 1
-  meta.attributes = LOCAL.attributes ?? []
-  meta.default_group_by = LOCAL.default_group_by ?? LOCAL.attributes?.[0]?.name ?? 'Category'
-  meta.tasks ??= {}
-  return meta
-}
-
-function persistTaskMeta() {
-  writeTaskMeta(TASK_META_FILE, taskMeta())
-}
-
-function cleanTaskAttributes(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new TaskMetaError('attributes must be an object')
-  }
-  const definitions = new Map((LOCAL.attributes ?? []).map((attribute) => [attribute.name, new Set(attribute.values)]))
-  const clean = {}
-  for (const [name, value] of Object.entries(raw)) {
-    if (!definitions.has(name)) throw new TaskMetaError(`Unknown attribute: '${name}'`)
-    if (value == null || value === '') continue
-    if (typeof value !== 'string') throw new TaskMetaError(`Attribute '${name}' must be a string`)
-    if (!definitions.get(name).has(value)) {
-      throw new TaskMetaError(`Attribute '${name}' has no value '${value}'`)
-    }
-    clean[name] = value
-  }
-  return clean
 }
 
 // server ---------------------------------------------------------------------
@@ -792,7 +770,7 @@ export function createApp(options = {}) {
       // JSON body parsing only for the endpoints that need it; /api/upload
       // streams raw bytes straight to disk (JSON-typed uploads included).
       router.use(
-        ['/api/run', '/api/cancel', '/api/paste_done', '/api/tasks', '/api/attributes', '/api/actions'],
+        ['/api/run', '/api/cancel', '/api/paste_done', '/api/tasks', '/api/actions'],
         express.json({ limit: '1mb' }),
       )
 
@@ -810,101 +788,6 @@ export function createApp(options = {}) {
         const best = Math.max(...candidates.map((c) => c.score))
         const tied = candidates.filter((c) => c.score === best).map((c) => c.task)
         res.json({ result: { task: tied[0], ambiguous: tied } })
-      })
-
-      router.put('/api/tasks/:taskName/settings', async (req, res) => {
-        const task = TASK_MAP.get(req.params.taskName)
-        if (!task) return res.status(404).json({ detail: 'Unknown task' })
-        const raw = req.body && typeof req.body === 'object' ? req.body : {}
-        try {
-          let spec = task.schedule ? normalizeSpec(task.schedule) : null
-          if (raw.schedule !== undefined) {
-            if (!isSchedulable(task)) {
-              return res.status(400).json({ detail: 'This task needs manual input or browser interaction and cannot be scheduled' })
-            }
-            spec = normalizeSpec({
-              enabled: raw.schedule?.enabled === true,
-              days: raw.schedule?.days,
-              at: raw.schedule?.at,
-              catchUp: raw.schedule?.catchUp !== false,
-            })
-            if (spec.enabled && !spec.at) {
-              return res.status(400).json({ detail: 'A time (HH:MM) is required when the schedule is enabled' })
-            }
-            spec = validateSchedule(task, spec)
-          }
-          let attributes = task.attributes ?? {}
-          if (raw.attributes !== undefined) attributes = cleanTaskAttributes(raw.attributes)
-
-          const meta = taskMeta()
-          meta.tasks[task.name] ??= {}
-          if (raw.schedule !== undefined) meta.tasks[task.name].schedule = spec
-          if (raw.attributes !== undefined) meta.tasks[task.name].attributes = attributes
-          persistTaskMeta()
-
-          task.attributes = attributes
-          let scheduled = SCHEDULERS.has(task.name)
-          if (raw.schedule !== undefined) {
-            task.schedule = spec
-            // Do not replay occurrences from before the edit. The next new
-            // occurrence after the chosen time is the first one that fires.
-            if (spec?.enabled) {
-              const latest = occurrenceBefore(spec, new Date())
-              if (latest != null) await scheduleStore(task.name).setLastScheduledRun(latest)
-            }
-            stopSchedulerForTask(task.name)
-            scheduled = startSchedulerForTask(task)
-            console.log(`[schedule] ${task.name}: ${spec?.enabled ? 'enabled' : 'disabled'}${spec?.at ? ` at ${spec.at}` : ''}`)
-          }
-          res.json({
-            schedule: spec,
-            attributes,
-            next_run: spec?.enabled ? occurrenceAfter(spec, new Date()) : null,
-            scheduled,
-            task: taskJson(task),
-          })
-        } catch (err) {
-          const status = err instanceof TaskMetaError || err instanceof ConfigError ? 400 : 500
-          res.status(status).json({ detail: err.message })
-        }
-      })
-
-      router.put('/api/attributes', (req, res) => {
-        const raw = req.body && typeof req.body === 'object' ? req.body : {}
-        try {
-          const definitions = normalizeAttributeDefinitions(raw.attributes)
-          if (!definitions.some((attribute) => attribute.name === 'Category')) {
-            throw new TaskMetaError("The built-in 'Category' attribute is required")
-          }
-          const defaultBy = String(raw.default_group_by ?? LOCAL.default_group_by ?? '').trim()
-          if (!definitions.some((attribute) => attribute.name === defaultBy)) {
-            throw new TaskMetaError(`Default grouping attribute '${defaultBy}' does not exist`)
-          }
-
-          const valid = new Map(definitions.map((attribute) => [attribute.name, new Set(attribute.values)]))
-          const prune = (values) => {
-            const clean = {}
-            for (const [name, value] of Object.entries(values ?? {})) {
-              if (valid.get(name)?.has(value)) clean[name] = value
-            }
-            return clean
-          }
-
-          const meta = taskMeta()
-          meta.attributes = definitions
-          meta.default_group_by = defaultBy
-          for (const entry of Object.values(meta.tasks)) {
-            if (entry.attributes) entry.attributes = prune(entry.attributes)
-          }
-          for (const task of TASK_LIST) task.attributes = prune(task.attributes)
-          LOCAL.attributes = definitions
-          LOCAL.default_group_by = defaultBy
-          persistTaskMeta()
-          res.json({ attributes: definitions, default_group_by: defaultBy })
-        } catch (err) {
-          const status = err instanceof TaskMetaError ? 400 : 500
-          res.status(status).json({ detail: err.message })
-        }
       })
 
       router.get('/api/metrics', (req, res) => {
@@ -942,9 +825,13 @@ export function createApp(options = {}) {
             .status(400)
             .json({ detail: `${filename} does not match the expected pattern(s): ${patterns.join(', ')}` })
         }
-        const partPath = path.join(stagingDir(task.name), filename + '.part')
-        const finalPath = partPath.slice(0, -'.part'.length)
-        const ws = fs.createWriteStream(partPath)
+        const directory = stagingDir(task.name)
+        const finalPath = path.join(directory, filename)
+        const partPath = path.join(
+          directory,
+          `${filename}.part-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        )
+        const ws = fs.createWriteStream(partPath, { flags: 'wx' })
         let size = 0
         let tooLarge = false
         req.on('data', (chunk) => {

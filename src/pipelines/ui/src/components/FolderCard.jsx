@@ -60,7 +60,7 @@ export default function FolderCard({
 
           <div className="folder-card__actions">
             {folder.method !== 'reviewed-audio' ? (
-              <button className="outline secondary" onClick={onProcessNow}>Process now</button>
+              <button className="outline secondary" onClick={onProcessNow}>Run</button>
             ) : null}
             {folder.method === 'reviewed-audio' || folder.placement === 'manual' || stats.review > 0 ? (
               <button className={reviewCount > 0 ? '' : 'outline secondary'} onClick={onOpenReview}>

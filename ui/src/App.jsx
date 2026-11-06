@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { AppHeader, Button, Dropzone, EmptyState, Field, getBrand, getJson, Page, postJson, putJson, showToast, ThemeToggle, Toasts, uploadFile as uploadFileRequest, usePolling } from '@dscpln/ui-kit'
 import { pruneTarGz } from '../../src/tasks/ui/src/lib/prune-tar-gz.js'
 import AttributesModal from '../../src/tasks/ui/src/components/AttributesModal.jsx'
@@ -63,6 +63,14 @@ export default function App() {
   const [defaultGroupBy, setDefaultGroupBy] = useState('')
   const [groupBy, setGroupBy] = useState('')
   const [filterValue, setFilterValue] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('fl0w-collapsed-groups') || '[]'))
+    } catch {
+      return new Set()
+    }
+  })
   const [attributesOpen, setAttributesOpen] = useState(false)
   const [route, setRoute] = useState(() => readRoute())
 
@@ -489,9 +497,23 @@ export default function App() {
   usePolling(poll, 700, { runImmediately: false })
 
   const groupingAttribute = attributes.find((attribute) => attribute.name === groupBy)
-  const filterValues = attributeValues(groupingAttribute, jobs)
+  const scopedJobs = typeFilter === 'all' ? jobs : jobs.filter((job) => job.type === typeFilter)
+  const filterValues = attributeValues(groupingAttribute, scopedJobs)
   const activeFilter = filterValues.includes(filterValue) ? filterValue : ''
-  const visibleGroups = groupJobs(jobs, groupBy, activeFilter, groupingAttribute)
+  const visibleGroups = groupJobs(scopedJobs, groupBy, activeFilter, groupingAttribute)
+  const toggleGroup = (name) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      try {
+        localStorage.setItem('fl0w-collapsed-groups', JSON.stringify([...next]))
+      } catch {
+        // storage unavailable
+      }
+      return next
+    })
+  }
   const openPipeline = (job) => go(`/jobs/pipeline/${encodeURIComponent(job.name)}`)
 
   if (route.view === 'pipeline') {
@@ -543,12 +565,31 @@ export default function App() {
 
       <Page width="wide">
         <section className="card global-drop">
-          <p className="hint">Drop an export file anywhere here — it is detected, you confirm, it runs.</p>
-          <Dropzone onFiles={handleGlobalFiles} label="Drop files here or choose files" hint="Files are matched to the right job automatically" />
+          <Dropzone
+            className="global-drop__dropzone"
+            onFiles={handleGlobalFiles}
+            label="Drop an export file here, or choose files"
+            hint="Detected automatically — you confirm before it runs"
+          />
         </section>
 
         <section className="card task-toolbar">
           <div className="task-toolbar__row">
+            <Field label="Type" htmlFor="job-type-filter" className="task-toolbar__field">
+              <select
+                id="job-type-filter"
+                data-testid="type-filter"
+                value={typeFilter}
+                onChange={(event) => {
+                  setTypeFilter(event.target.value)
+                  setFilterValue('')
+                }}
+              >
+                <option value="all">All jobs</option>
+                <option value="task">Tasks</option>
+                <option value="pipeline">Pipelines</option>
+              </select>
+            </Field>
             <Field label="Group by" htmlFor="task-group-by" className="task-toolbar__field">
               <select
                 id="task-group-by"
@@ -592,13 +633,24 @@ export default function App() {
           </p>
         </section>
 
-        {visibleGroups.map((group) => (
+        {visibleGroups.map((group) => {
+          const collapsed = collapsedGroups.has(group.name)
+          return (
           <div key={group.name} data-testid={`group-${group.name}`}>
-            <div className="category-header">
-              <span className="category-title">{group.name}</span>
+            <button
+              type="button"
+              className="category-header"
+              aria-expanded={!collapsed}
+              data-testid={`group-toggle-${group.name}`}
+              onClick={() => toggleGroup(group.name)}
+            >
+              <span className="category-title">
+                <ChevronDown className="category-header__chevron" size={18} strokeWidth={2} aria-hidden="true" />
+                {group.name}
+              </span>
               <span className="category-count">{group.jobs.length} job{group.jobs.length === 1 ? '' : 's'}</span>
-            </div>
-            <div className="task-grid">
+            </button>
+            {!collapsed ? <div className="task-grid">
               {group.jobs.map((job) => (
                 <JobCard
                   key={job.id}
@@ -621,9 +673,10 @@ export default function App() {
                   onFiles={openPipeline}
                 />
               ))}
-            </div>
+            </div> : null}
           </div>
-        ))}
+          )
+        })}
 
         {!visibleGroups.length ? (
           <EmptyState title="No jobs match this filter" description="Change the group or filter, or add a job to the config." />

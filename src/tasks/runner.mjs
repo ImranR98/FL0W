@@ -5,6 +5,9 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { redactText, shellQuote, splitLines } from './util.mjs';
 
+export const MAX_CAPTURE_BYTES = 16 * 1024 * 1024;
+export const MAX_STDERR_BYTES = 1 * 1024 * 1024;
+
 // subprocess layer -----------------------------------------------------------
 
 export function killpg(pid, log = () => {}) {
@@ -59,7 +62,21 @@ export function run(cmd, opts = {}) {
   let proc;
   const outBuf = [];
   const errBuf = [];
-  const done = (rc) => (capture ? { rc, out: redactText(outBuf.join(''), redact), err: redactText(errBuf.join(''), redact) } : rc);
+  let outBytes = 0;
+  let errBytes = 0;
+  let outTruncated = false;
+  let errTruncated = false;
+  const finishText = (chunks, truncated, limit, redactValues) => {
+    const text = redactText(chunks.join(''), redactValues);
+    return truncated ? `${text}\n[output truncated at ${limit} bytes]` : text;
+  };
+  const done = (rc) => (capture
+    ? {
+      rc,
+      out: finishText(outBuf, outTruncated, MAX_CAPTURE_BYTES, redact),
+      err: finishText(errBuf, errTruncated, MAX_STDERR_BYTES, redact),
+    }
+    : rc);
   try {
     proc = spawnSafe(cmd, { cwd, shell, env, uid, gid });
   } catch (e) {
@@ -70,7 +87,10 @@ export function run(cmd, opts = {}) {
   proc.stderr.on('error', () => {});
   proc.stdout.on('data', (d) => {
     if (capture) {
-      outBuf.push(d);
+      const room = MAX_CAPTURE_BYTES - outBytes;
+      if (room > 0) outBuf.push(room >= d.length ? d : d.subarray(0, room));
+      outBytes += Math.min(room, d.length);
+      if (d.length > room) outTruncated = true;
       return;
     }
     // terminal-faithful line splitting: '\r' (progress updates) and '\n'
@@ -83,7 +103,12 @@ export function run(cmd, opts = {}) {
       outTail = outTail.slice(idx + skip);
     }
   });
-  proc.stderr.on('data', (d) => { errBuf.push(d); });
+  proc.stderr.on('data', (d) => {
+    const room = MAX_STDERR_BYTES - errBytes;
+    if (room > 0) errBuf.push(room >= d.length ? d : d.subarray(0, room));
+    errBytes += Math.min(room, d.length);
+    if (d.length > room) errTruncated = true;
+  });
   groups.add(proc.pid);
   let outTail = '';
   return new Promise((resolvePromise) => {
@@ -93,7 +118,7 @@ export function run(cmd, opts = {}) {
       settled = true;
       log(`ERROR: could not start: ${e.message}`);
       groups.delete(proc.pid);
-      resolvePromise(capture ? { rc: 127, out: redactText(outBuf.join(''), redact), err: redactText(errBuf.join(''), redact) } : 127);
+      resolvePromise(capture ? { rc: 127, out: finishText(outBuf, outTruncated, MAX_CAPTURE_BYTES, redact), err: finishText(errBuf, errTruncated, MAX_STDERR_BYTES, redact) } : 127);
     });
     proc.on('close', (code, signal) => {
       if (settled) return;
@@ -103,7 +128,7 @@ export function run(cmd, opts = {}) {
       if (!capture) {
         if (outTail) log(redactText(outTail, redact));
         // stderr is buffered and flushed here (nothing is lost to the pipe race)
-        for (const line of splitLines(redactText(errBuf.join(''), redact))) log(line);
+        for (const line of splitLines(finishText(errBuf, errTruncated, MAX_STDERR_BYTES, redact))) log(line);
       }
       resolvePromise(done(rc));
     });

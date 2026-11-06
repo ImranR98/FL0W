@@ -1,4 +1,4 @@
-# File Pipelines
+# FL0W File Pipelines
 
 **Watch folders and move media through safe, repeatable pipelines.**
 
@@ -6,44 +6,53 @@ File Pipelines watches configured folders for new media, processes each item,
 places the result in a destination, and keeps the original until you explicitly
 clean up. Cleanup only happens after the destination copy is verified.
 
-Use it for phone-sync folders, camera uploads, screenshots, voice notes or any
-tree where files should be standardized or archived without losing originals.
+In the unified FL0W UI, each pipeline is a job card. Open its **Files**
+workspace for review, cleanup, trash, activity and pipeline setup.
 
 ## At a glance
 
 | | |
 |---|---|
-| Runs at | `/pipelines` (or port `8791` locally) |
-| Config | `--config <path>`; `/config/config.json` in the container |
+| Runs at | `#/jobs/pipeline/<name>` in FL0W; APIs under `/pipelines/api` |
+| Config | `FL0W_PIPELINES_CONFIG`, default `config/apps/file-pipelines/config.json` |
 | State | Staging, review, trash and logs from config |
 | Methods | `standardize`, `snapchat`, `copy`, `reviewed-audio` |
+| Schedules | `jobs-meta.json`, managed by the unified JobEngine |
 | Safety | Originals are read-only until verified cleanup; cleanup moves to trash |
 
 ## Quick start
 
+From the FL0W repository root:
+
 ```sh
 npm install
-node src/index.js --config config.json
+cp config.example.json config/apps/file-pipelines/config.json
+npm start
 ```
 
-Open <http://127.0.0.1:8791>. A new `config.json` starts with no folders; add
-them from Settings.
+Open <http://127.0.0.1:8085>. A new pipeline config starts with no folders; add
+them from the pipeline **Files** workspace or edit the JSON directly.
+
+The standalone daemon can still be started for debugging:
+
+```sh
+node src/pipelines/src/index.js --config config/apps/file-pipelines/config.json
+```
 
 With Docker, mount a writable `/config` and your media trees:
 
 ```sh
 mkdir -p file-pipelines-data
-docker run --rm -p 8791:8791 \
+docker run --rm -p 8085:8085 \
   -v "$PWD/file-pipelines-data:/config" \
   -v "$PWD/file-pipelines-data:/data" \
   -v /path/to/source:/source:ro \
   -v /path/to/media:/media \
-  ghcr.io/imranr98/dscpln-file-pipelines:latest
+  ghcr.io/imranr98/fl0w:latest
 ```
 
-The first start creates an empty `/config/config.json`; add folders in
-Settings. Use container paths such as `/source` and `/media` in the folder
-settings, not host paths.
+Use container paths such as `/source` and `/media` in the folder settings, not
+host paths.
 
 ## How it works
 
@@ -185,7 +194,7 @@ Point the staging directory at the same filesystem as the destinations so
 placements are atomic renames. Exclude it from any file-sync tool if it lives
 inside a synced tree.
 
-Notifications are relayed through the Portal (`DSCPLN_PORTAL_URL`), whose
+Notifications are relayed through DA5H (`NOTIFY_RELAY_URL`), whose
 Settings hold the ntfy URL and token. Without a relay configured they are
 skipped.
 
@@ -235,7 +244,7 @@ touch real data. The browser suite drives the real page through
 
 | Path | What lives there |
 |---|---|
-| `src/index.js` | CLI entry (`serve`, `standardize`, `snapconcat`, `concataudio`, `clean-synced`) |
+| `src/pipelines/src/index.js` | Standalone CLI entry (`serve`, `standardize`, `snapconcat`, `concataudio`, `clean-synced`) |
 | `src/daemon.js` | Wires the store, queue, watchers and API |
 | `src/config.js` | Config shape, normalization and validation |
 | `src/store.js` | Per-folder file state: scan, dedupe/conflict detection, cleanup previews |
