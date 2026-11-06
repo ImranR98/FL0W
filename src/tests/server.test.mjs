@@ -45,7 +45,7 @@ async function fixture(t) {
 }
 
 test('FL0W serves the unified job API and redirects legacy views', async (t) => {
-  const { base, root } = await fixture(t)
+  const { base, root, app } = await fixture(t)
   const health = await (await fetch(`${base}/api/health`)).json()
   assert.equal(health.app, 'Jobs')
   assert.equal(health.tasks, 1)
@@ -111,6 +111,21 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   const meta = JSON.parse(await fsp.readFile(metaFile, 'utf8'))
   assert.equal(meta.jobs['task:Echo'].schedule.at, hhmm)
   assert.ok(meta.jobs['pipeline:Camera'])
+
+  // A paused pipeline records a missed scheduled run, while a manual run is
+  // still allowed (the UI's Process now button stays enabled).
+  app.daemon.config.paused = true
+  const scheduled = await app.engine.run('pipeline:Camera', { trigger: 'schedule' })
+  assert.equal(scheduled.status, 409)
+  const pausedJob = await (await fetch(`${base}/api/jobs/pipeline:Camera`)).json()
+  assert.equal(pausedJob.schedule_missed, 1)
+  const manual = await fetch(`${base}/api/jobs/pipeline:Camera/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  assert.equal(manual.status, 200)
+  app.daemon.config.paused = false
 
   const attributes = await (await fetch(`${base}/api/attributes`)).json()
   assert.ok(attributes.attributes.some((attribute) => attribute.name === 'Category'))

@@ -294,6 +294,10 @@ export class JobEngine {
     const folder = this.#pipeline(resolved)
     if (folder) {
       if (!this.#jobEntry(resolved).enabled) return { status: 409, body: { error: 'Job is disabled' } }
+      if (trigger === 'schedule' && this.daemon.config.paused) {
+        await this.runs.markMissed(resolved)
+        return { status: 409, body: { error: 'Pipeline processing is paused' } }
+      }
       this.pendingPipelineTrigger.set(folder.def.name, trigger)
       const result = await this.daemon.queue.processNow(folder.def.name, { files: body?.files })
       if (!result.ok) {
