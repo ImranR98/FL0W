@@ -9,7 +9,9 @@ const formatElapsed = (seconds) => {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
-const browserSrc = `${window.DSCPLN_TASK_BASE ?? '.'}/browser/?autoconnect=1&resize=scale&reconnect=1&path=websockify`
+// Resolve at render time: the unified UI sets DSCPLN_TASK_BASE after modules
+// are evaluated, and the legacy view relies on its document base instead.
+const browserSrcFor = () => `${window.DSCPLN_TASK_BASE ?? '.'}/browser/?autoconnect=1&resize=scale&reconnect=1&path=websockify`
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const scheduleText = (schedule) => {
@@ -36,6 +38,7 @@ export default function TaskCard({
   onCancel,
   onLog,
 }) {
+  const browserSrc = browserSrcFor()
   const chips = (attributes ?? [])
     .filter((attribute) => attribute.name !== groupBy)
     .map((attribute) => ({ name: attribute.name, value: task.attributes?.[attribute.name] }))

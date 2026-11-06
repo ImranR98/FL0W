@@ -11,8 +11,10 @@ FL0W merges the old Task Runner and File Pipelines apps into one job model:
 - Both appear in one jobs list with shared schedules, run state, logs and
   notifications. Pipeline jobs can also be scheduled.
 
-The purple-accented unified UI lives at `/`. The complete legacy views remain
-at `/tasks/` and `/pipelines/` for advanced operations.
+The unified UI lives at `/`; it covers task actions, uploads, the login
+browser, pipeline review, cleanup, trash and job settings. `/tasks` and
+`/pipelines` redirect there. Their APIs remain mounted for uploads, browser
+access and pipeline file actions.
 
 ## Layout
 
@@ -54,13 +56,16 @@ The app reads:
 
 ```text
 GET  /api/jobs
-POST /api/jobs/:name/run
-POST /api/jobs/:name/cancel
-GET  /api/jobs/:name/log
+GET  /api/jobs/:id
+POST /api/jobs/:id/run
+POST /api/jobs/:id/cancel
+GET  /api/jobs/:id/runs
+GET  /api/jobs/:id/log
 GET  /api/state
 GET  /api/metrics
 ```
 
+Job ids are `task:<name>` and `pipeline:<name>`; a bare unique name still works.
 Task-specific endpoints stay under `/tasks/api/*`; pipeline-specific endpoints
 stay under `/pipelines/api/*`.
 

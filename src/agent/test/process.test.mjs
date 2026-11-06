@@ -38,7 +38,7 @@ function writeConfig(root, overrides = {}) {
   const file = path.join(root, 'agent.json');
   const config = {
     stateDir: path.join(root, 'state'),
-    enrollment: { allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
+    enrollment: { enabled: true, allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
     jobs: {
       tool: {
         type: 'process',

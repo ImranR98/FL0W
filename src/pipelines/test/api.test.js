@@ -99,15 +99,6 @@ test("api: health, state, pause, process-now, config validation", async () => {
     assert.equal(bad.ok, false);
     const unknown = await fetch(`${base}/api/nope`);
     assert.equal(unknown.status, 404);
-
-    const page = await fetch(`${base}/`);
-    assert.equal(page.status, 200);
-    assert.match(page.headers.get("content-type"), /text\/html/);
-    const html = await page.text();
-    assert.match(html, /<title>FL0W ⋅ Pipelines<\/title>/);
-    const asset = /src="\.\/(assets\/[^"]+\.js)"/.exec(html)?.[1];
-    assert.ok(asset, "the built UI bundle must be referenced");
-    assert.equal((await fetch(`${base}/${asset}`)).status, 200);
     const traversal = await fetch(`${base}/../src/api/index.js`);
     assert.equal(traversal.status, 404);
   } finally {
@@ -325,24 +316,11 @@ test("api: reviewed audio mutations are protected by the origin check", async ()
 test("api: the app mounts under BASE_PATH with the shared kit", async () => {
   const { root, daemon, base } = await makeDaemon({ basePath: "/pipelines" });
   try {
-    const page = await fetch(`${base}/pipelines`);
-    assert.equal(page.status, 200);
-    const html = await page.text();
-    assert.match(html, /<base href="\/pipelines\/">/);
-    assert.match(html, /<title>FL0W ⋅ Pipelines<\/title>/);
-
     const state = await (await fetch(`${base}/pipelines/api/state`)).json();
     assert.equal(state.folders.length, 1);
 
     const health = await fetch(`${base}/pipelines/api/health`);
     assert.equal(health.status, 200);
-
-    const index = await fetch(`${base}/pipelines/`);
-    const indexHtml = await index.text();
-    const asset = /src="\.\/(assets\/[^"]+\.js)"/.exec(indexHtml)?.[1];
-    assert.ok(asset, "the built UI bundle must be referenced");
-    const bundle = await fetch(`${base}/pipelines/${asset}`);
-    assert.equal(bundle.status, 200);
 
     const crossOrigin = await fetch(`${base}/pipelines/api/pause`, {
       method: "POST",

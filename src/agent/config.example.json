@@ -3,6 +3,7 @@
   "port": 8788,
   "stateDir": "/state",
   "enrollment": {
+    "enabled": true,
     "windowSeconds": 0,
     "allowFrom": [
       "127.0.0.1/32",

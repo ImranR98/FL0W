@@ -20,7 +20,7 @@ test('webhook auto-generates a token, enrolls it, and downloads an archive', asy
   const configFile = path.join(root, 'agent.json');
   fs.writeFileSync(configFile, JSON.stringify({
     stateDir: path.join(root, 'state'),
-    enrollment: { allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
+    enrollment: { enabled: true, allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
     jobs: {
       saves: {
         type: 'archive',

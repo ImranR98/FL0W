@@ -18,7 +18,7 @@ function writeConfig(root, overrides = {}) {
   const file = path.join(root, 'agent.json');
   const config = {
     stateDir: path.join(root, 'state'),
-    enrollment: { allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
+    enrollment: { enabled: true, allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
     jobs: {
       example: {
         type: 'archive',
@@ -125,7 +125,7 @@ test('agent archives only include-matched paths when include is configured', asy
   const configFile = path.join(root, 'agent.json');
   fs.writeFileSync(configFile, JSON.stringify({
     stateDir: path.join(root, 'state'),
-    enrollment: { allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
+    enrollment: { enabled: true, allowFrom: ['127.0.0.1/32'], windowSeconds: 60 },
     jobs: {
       saves: {
         type: 'archive',
@@ -151,6 +151,23 @@ test('agent archives only include-matched paths when include is configured', asy
     await close();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('enrollment is opt-in by default', () => {
+  const root = tempRoot();
+  const file = path.join(root, 'agent.json');
+  fs.writeFileSync(file, JSON.stringify({
+    stateDir: path.join(root, 'state'),
+    jobs: { example: { type: 'archive', root: path.join(root, 'data') } },
+  }));
+  assert.equal(loadConfig(file).enrollment.enabled, false);
+  const enabled = path.join(root, 'enabled.json');
+  fs.writeFileSync(enabled, JSON.stringify({
+    stateDir: path.join(root, 'state'),
+    enrollment: { enabled: true },
+    jobs: { example: { type: 'archive', root: path.join(root, 'data') } },
+  }));
+  assert.equal(loadConfig(enabled).enrollment.enabled, true);
 });
 
 test('config rejects relative roots and unsupported job types', () => {

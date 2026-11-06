@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "build:ui": "vite build --config src/tasks/vite.config.mjs && vite build --config src/pipelines/vite.config.mjs && vite build",
+    "build:ui": "vite build",
     "watch:ui": "vite build --watch",
     "lint": "eslint .",
     "test": "npm run build:ui && node --test --test-concurrency=1 src/agent/test/*.mjs src/tasks/test/*.mjs src/pipelines/test/*.js src/pipelines/test/*.mjs src/tests/*.test.mjs"

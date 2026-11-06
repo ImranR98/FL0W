@@ -138,12 +138,13 @@ Enrollment fields:
 
 | Field | Description |
 |---|---|
-| `enabled` | Set `false` to disable first-use enrollment |
+| `enabled` | First-use enrollment is opt-in; set `true` to allow it |
 | `windowSeconds` | Seconds after startup when enrollment is allowed; `0` disables the time limit |
 | `allowFrom` | Source CIDRs allowed to enroll |
 
-The defaults allow loopback and RFC1918 addresses. Set `allowFrom` to the Task
-Runner's address or subnet and keep the agent off public interfaces.
+Enrollment is disabled unless `enabled` is true. When enabled, the defaults
+allow loopback and RFC1918 addresses. Set `allowFrom` to the Task Runner's
+address or subnet and keep the agent off public interfaces.
 
 Optional TLS:
 

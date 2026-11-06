@@ -1449,22 +1449,12 @@ test('base path: the app mounts under BASE_PATH with the shared kit', async () =
   try {
     const base = `http://127.0.0.1:${srv.address().port}`;
 
-    const page = await fetch(`${base}/tasks`);
-    assert.equal(page.status, 200);
-    const html = await page.text();
-    assert.match(html, /<base href="\/tasks\/">/)
-    assert.match(html, /<title>FL0W ⋅ Tasks<\/title>/)
-
     const tasks = await (await fetch(`${base}/tasks/api/tasks`)).json();
     assert.equal(tasks.groups[0].tasks[0].name, 'Prefixed');
 
     const health = await (await fetch(`${base}/tasks/api/health`)).json();
     assert.equal(health.ok, true);
     assert.equal(health.basePath, '/tasks');
-
-    const asset = /src="\.\/(assets\/[^"]+\.js)"/.exec(html)?.[1];
-    assert.ok(asset, 'the built UI bundle must be referenced');
-    assert.equal((await fetch(`${base}/tasks/${asset}`)).status, 200);
 
     const crossOrigin = await fetch(`${base}/tasks/api/run/Prefixed`, {
       method: 'POST',

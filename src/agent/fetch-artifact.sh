@@ -13,6 +13,7 @@
 #
 # Optional env:
 #   ARTIFACT_CHECK_ARGS  args that print the version, e.g. "--version"
+#   ARTIFACT_SHA256      expected SHA-256 of the downloaded archive"
 set -eu
 
 : "${ARTIFACT_URL:?ARTIFACT_URL is required}"
@@ -50,6 +51,9 @@ trap cleanup EXIT
 
 echo "downloading $artifact_name $ARTIFACT_VERSION from $ARTIFACT_URL"
 curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/artifact.tar.gz" "$ARTIFACT_URL"
+if [ -n "${ARTIFACT_SHA256:-}" ]; then
+    printf '%s  %s\n' "$ARTIFACT_SHA256" "$tmp/artifact.tar.gz" | sha256sum -c - >/dev/null
+fi
 tar -xzf "$tmp/artifact.tar.gz" -C "$tmp"
 
 if [ ! -f "$tmp/$ARTIFACT_MEMBER" ]; then

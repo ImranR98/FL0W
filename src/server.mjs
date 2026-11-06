@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
@@ -15,8 +14,6 @@ import { metaPath } from './jobs/meta.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 const BUNDLED_STATIC = path.join(ROOT, 'static')
-const TASK_STATIC = path.join(HERE, 'tasks', 'static')
-const PIPELINE_STATIC = path.join(HERE, 'pipelines', 'static')
 
 // Defaults are applied before importing the task modules: their state/config
 // constants are computed at module load. Config and state live in the
@@ -68,16 +65,9 @@ export async function startFl0w(options = {}) {
     engine.reload().catch((err) => log(`job reload failed: ${err.message}`))
   }
 
-  const taskApp = taskServer.createApp({
-    basePath: '',
-    htmlBasePath: '/tasks',
-    staticDir: fs.existsSync(path.join(TASK_STATIC, 'index.html')) ? TASK_STATIC : null,
-  })
-  const pipelineApp = new ApiServer(pipelineDaemon, {
-    basePath: '',
-    htmlBasePath: '/pipelines',
-    staticDir: fs.existsSync(path.join(PIPELINE_STATIC, 'index.html')) ? PIPELINE_STATIC : null,
-  }).createApp()
+  // The unified UI covers tasks and pipelines; only their APIs remain mounted.
+  const taskApp = taskServer.createApp({ basePath: '', staticDir: null })
+  const pipelineApp = new ApiServer(pipelineDaemon, { basePath: '', staticDir: null }).createApp()
 
   const app = createApp({
     title: 'Jobs',
@@ -105,8 +95,10 @@ export async function startFl0w(options = {}) {
         res.send(engine.metricsText())
       })
 
-      // Legacy routes stay available while the unified UI is migrated. They
-      // are removed once the detail views reach parity.
+      // Old view URLs now redirect to the unified job list; their APIs stay
+      // mounted for uploads, browser access and pipeline file actions.
+      router.get(['/tasks', '/tasks/'], (req, res) => res.redirect(302, '/'))
+      router.get(['/pipelines', '/pipelines/'], (req, res) => res.redirect(302, '/'))
       router.use('/tasks', taskApp)
       router.use('/pipelines', pipelineApp)
     },

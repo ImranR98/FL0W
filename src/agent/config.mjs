@@ -102,7 +102,9 @@ export function loadConfig(configPath) {
     throw new ConfigError('enrollment.windowSeconds must be a non-negative integer');
   }
   const enrollment = {
-    enabled: enrollmentRaw.enabled !== false,
+    // Trust-on-first-use must be opted into explicitly: a fresh agent on a
+    // LAN should not let the first caller claim it by default.
+    enabled: enrollmentRaw.enabled === true,
     allowFrom: allowFrom.map((entry) => entry.trim()),
     windowSeconds,
   };

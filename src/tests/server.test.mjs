@@ -44,7 +44,7 @@ async function fixture(t) {
   return { root, base: `http://127.0.0.1:${port}`, app }
 }
 
-test('FL0W serves the unified job API and both legacy views', async (t) => {
+test('FL0W serves the unified job API and redirects legacy views', async (t) => {
   const { base, root } = await fixture(t)
   const health = await (await fetch(`${base}/api/health`)).json()
   assert.equal(health.app, 'Jobs')
@@ -60,12 +60,14 @@ test('FL0W serves the unified job API and both legacy views', async (t) => {
   assert.equal(state.tasks, 1)
   assert.equal(state.pipelines, 1)
 
-  const tasksHtml = await (await fetch(`${base}/tasks/`)).text()
-  assert.match(tasksHtml, /<base href="\/tasks\/">/)
-  assert.match(tasksHtml, /<title>FL0W ⋅ Tasks<\/title>/)
-  const pipelinesHtml = await (await fetch(`${base}/pipelines/`)).text()
-  assert.match(pipelinesHtml, /<base href="\/pipelines\/">/)
-  assert.match(pipelinesHtml, /<title>FL0W ⋅ Pipelines<\/title>/)
+  for (const legacy of ['/tasks/', '/pipelines/']) {
+    const response = await fetch(`${base}${legacy}`, { redirect: 'manual' })
+    assert.equal(response.status, 302)
+    assert.equal(response.headers.get('location'), '/')
+  }
+  // Their APIs stay mounted for uploads, browser access and file actions.
+  assert.equal((await fetch(`${base}/tasks/api/health`)).status, 200)
+  assert.equal((await fetch(`${base}/pipelines/api/health`)).status, 200)
   const rootHtml = await (await fetch(`${base}/`)).text()
   assert.match(rootHtml, /<title>FL0W ⋅ Jobs<\/title>/)
 
