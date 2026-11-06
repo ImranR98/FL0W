@@ -134,3 +134,47 @@
 .pipeline-card__actions .btn {
     flex: 1 1 auto;
 }
+
+
+.run-list {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.run-list__item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--border);
+}
+
+.run-list__item:first-child {
+    border-top: 0;
+}
+
+.run-list__summary {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.run-list__meta {
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+    .run-list__item {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .run-list__meta {
+        grid-column: 1 / -1;
+        white-space: normal;
+    }
+}

@@ -3,13 +3,17 @@ import { Play, RefreshCw, Settings, Wrench } from 'lucide-react'
 import {
   AppHeader,
   Button,
+  EmptyState,
+  formatDateTime,
   getBrand,
   getJson,
+  humanAgo,
   Page,
   postJson,
   putJson,
   showToast,
   StatTiles,
+  StatusPill,
   ThemeToggle,
 } from '@dscpln/ui-kit'
 import FolderCard from '../../src/pipelines/ui/src/components/FolderCard.jsx'
@@ -33,6 +37,7 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
   const [trash, setTrash] = useState(emptyTrash)
   const [trashSelection, setTrashSelection] = useState(new Set())
   const [logLines, setLogLines] = useState([])
+  const [runs, setRuns] = useState([])
   const [expanded, setExpanded] = useState(new Set([job.name]))
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [reportDialog, setReportDialog] = useState(null)
@@ -62,12 +67,15 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
   const refreshLog = useCallback(async () => {
     try { setLogLines((await getJson('/pipelines/api/log?limit=200')).lines ?? []) } catch { /* keep last */ }
   }, [])
+  const refreshRuns = useCallback(async () => {
+    try { setRuns((await getJson(`/api/jobs/${encodeURIComponent(currentJob.id)}/runs`)).runs ?? []) } catch { /* keep last */ }
+  }, [currentJob.id])
 
   useEffect(() => {
-    refresh(); refreshTrash(); refreshLog()
-    const timer = setInterval(() => { refresh(); refreshLog() }, 5000)
+    refresh(); refreshTrash(); refreshLog(); refreshRuns()
+    const timer = setInterval(() => { refresh(); refreshLog(); refreshRuns() }, 5000)
     return () => clearInterval(timer)
-  }, [refresh, refreshTrash, refreshLog])
+  }, [refresh, refreshTrash, refreshLog, refreshRuns])
 
   const folder = state?.folders?.find((entry) => entry.name === currentJob.name) ?? null
   const stats = folder ? folderStats(folder) : null
@@ -75,7 +83,7 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
   const act = async (path, body = {}) => {
     try {
       const result = await postJson(path, body)
-      await Promise.all([refresh(), refreshLog()])
+      await Promise.all([refresh(), refreshLog(), refreshRuns()])
       return result
     } catch (err) {
       notify(err.message, 'error')
@@ -372,6 +380,29 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
           onFileAction={(file, action) => fileAction(file, action)}
           onSetDate={(file) => setSetDateDialog({ folder: folder.name, file, date: '', time: '00:00', error: '' })}
         />
+
+        <section className="card" aria-labelledby="runsHeading">
+          <div className="card__header">
+            <h2 id="runsHeading">Run history</h2>
+            <span className="card__context">{runs.length ? `${runs.length} recent run${runs.length === 1 ? '' : 's'}` : 'No runs yet'}</span>
+          </div>
+          {runs.length ? (
+            <ul className="run-list">
+              {runs.map((run, index) => (
+                <li key={`${run.startedAt}-${index}`} className="run-list__item">
+                  <StatusPill tone={run.ok ? 'ok' : 'danger'}>{run.ok ? 'OK' : 'Failed'}</StatusPill>
+                  <span className="run-list__summary">{run.summary || (run.ok ? 'Completed' : 'Failed')}</span>
+                  <span className="run-list__meta">
+                    {run.trigger ? `${run.trigger} · ` : ''}
+                    {run.endedAt ? `${formatDateTime(run.endedAt)} (${humanAgo(run.endedAt)})` : '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="No runs recorded yet" description="Runs triggered by the watcher, a schedule, or Process now appear here." />
+          )}
+        </section>
 
         <div className="side-grid">
           <TrashCard
