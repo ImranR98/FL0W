@@ -34,13 +34,10 @@ export class ConfigError extends Error {}
 const HEREDOC_WRAP = `bash -c 'TMP=$(mktemp); cat > "$TMP"; bash "$TMP"; RC=$?; rm -f "$TMP"; exit $RC' <<'BASH_SCRIPT'`;
 
 const slugifyTaskName = (name) => String(name).replace(/[^a-zA-Z0-9_-]/g, '_');
-const hasUnsafeTaskNameChars = (name) => {
-  const value = String(name);
-  return /[/\\]/.test(value) || [...value].some((char) => {
-    const code = char.charCodeAt(0);
-    return code < 32 || code === 127;
-  });
-};
+const hasUnsafeTaskNameChars = (name) => [...String(name)].some((char) => {
+  const code = char.charCodeAt(0);
+  return code < 32 || code === 127;
+});
 
 /* Task shorthands, normalized into `commands` at load: `script:` is a bash
  * body wrapped in a temp-file heredoc (children can't eat the script from
@@ -308,7 +305,7 @@ export async function loadConfig(configPath = CONFIG_FILE) {
       const merged = { ...g.defaults, ...t, group: g.name };
       if (!merged.name) throw new ConfigError("Every task needs a 'name'");
       if (hasUnsafeTaskNameChars(merged.name)) {
-        throw new ConfigError(`Task '${merged.name}': name must not contain path separators or control characters`);
+        throw new ConfigError(`Task '${merged.name}': name must not contain control characters`);
       }
       if (!merged.state_dir) throw new ConfigError(`Task '${merged.name}' needs a 'state_dir' for its run state`);
       if (merged.webhook !== undefined) {

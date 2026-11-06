@@ -164,15 +164,9 @@ test('loadConfig: validates groups, tasks, defaults, duplicates', async () => {
     /Duplicate task name/
   );
   await assert.rejects(
-    bctl.loadConfig(writeConfig('slash.mjs', {
-      groups: [{ name: 'G', tasks: [{ name: 'A/B', state_dir: '/x', commands: 'true' }] }],
-    })),
-    /must not contain path separators/
-  );
-  await assert.rejects(
     bctl.loadConfig(writeConfig('slug.mjs', {
       groups: [{ name: 'G', tasks: [
-        { name: 'A.B', state_dir: '/x', commands: 'true' },
+        { name: 'A/B', state_dir: '/x', commands: 'true' },
         { name: 'A_B', state_dir: '/y', commands: 'true' },
       ]}],
     })),
