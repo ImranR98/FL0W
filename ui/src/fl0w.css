@@ -42,13 +42,28 @@
     font-weight: 700;
     line-height: 1.5;
     white-space: nowrap;
-    background: var(--surface-3);
-    color: var(--text-muted);
+}
+
+/* Type colours are deliberately not the app accent: the accent identifies
+   FL0W itself, while blue/orange identify the job executor. */
+.job-type-badge--task {
+    background: color-mix(in srgb, #2563eb 12%, var(--surface));
+    color: #1d4ed8;
 }
 
 .job-type-badge--pipeline {
-    background: var(--accent-soft);
-    color: var(--accent);
+    background: color-mix(in srgb, #c2410c 12%, var(--surface));
+    color: #9a3412;
+}
+
+[data-theme="dark"] .job-type-badge--task {
+    background: rgba(96, 165, 250, 0.16);
+    color: #93c5fd;
+}
+
+[data-theme="dark"] .job-type-badge--pipeline {
+    background: rgba(251, 146, 60, 0.16);
+    color: #fdba74;
 }
 
 .job-card__body {
@@ -62,9 +77,15 @@
 .job-card__task,
 .job-card__pipeline {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: var(--space-2);
     min-width: 0;
+}
+
+/* Let the drop target absorb spare card height instead of leaving a gap. */
+.job-card__task .dropzone {
+    flex: 1 1 auto;
 }
 
 .job-card__paths {
