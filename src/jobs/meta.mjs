@@ -87,11 +87,16 @@ function normalizeMeta(raw) {
 function pipelineAttributes(folder) {
   const def = folder.def ?? folder
   const explicit = def.attributes && isObject(def.attributes) ? def.attributes : {}
-  const category = explicit.Category
-    ?? (def.category && def.category !== 'Pipelines' ? def.category : 'Media and Files')
+  // normalizeConfig injects Category: 'Pipelines' as the historic default;
+  // treat that exactly like an unset category so the unified default wins.
+  const configured = explicit.Category && explicit.Category !== 'Pipelines'
+    ? explicit.Category
+    : def.category && def.category !== 'Pipelines'
+      ? def.category
+      : 'Media and Files'
   return {
     ...explicit,
-    Category: category,
+    Category: configured,
     'Best run from': explicit['Best run from'] ?? 'Anywhere (auto)',
   }
 }

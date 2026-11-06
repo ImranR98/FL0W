@@ -55,6 +55,7 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   assert.equal(jobs.jobs.length, 2)
   assert.deepEqual(jobs.jobs.map((job) => job.type).sort(), ['pipeline', 'task'])
   assert.equal(jobs.jobs.find((job) => job.type === 'task').name, 'Echo')
+  assert.equal(jobs.jobs.find((job) => job.type === 'pipeline').attributes.Category, 'Media and Files')
 
   const state = await (await fetch(`${base}/api/state`)).json()
   assert.equal(state.tasks, 1)

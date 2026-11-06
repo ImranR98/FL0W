@@ -275,6 +275,8 @@ export async function runWebhook({ webhook, local, log, redact, cwd, runAs, sign
   } catch (e) {
     const message = signal?.aborted ? 'cancelled' : String(e.message ?? e);
     log(safe(`webhook ERROR: ${message}`));
-    return { ok: false, summary: message };
+    // The summary is stored and sent through notifications, so redact it just
+    // like the log line instead of leaking a configured secret in the body.
+    return { ok: false, summary: safe(message) };
   }
 }
