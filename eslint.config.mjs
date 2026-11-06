@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   {
-    ignores: ['node_modules/**', 'static/**', 'src/tasks/static/**', 'src/pipelines/static/**', 'kit/**'],
+    ignores: ['config/**', 'node_modules/**', 'static/**', 'src/tasks/static/**', 'src/pipelines/static/**', 'kit/**'],
   },
   js.configs.recommended,
   {
