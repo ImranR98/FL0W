@@ -88,11 +88,12 @@ export default function JobCard({
       data-testid={`${job.type}-${job.name}`}
     >
       <div className="card__header job-card__header">
-        <div className="job-card__heading">
-          <h2 className="card-title">{job.name}</h2>
-          <JobTypeBadge job={job} />
-        </div>
+        <h2 className="card-title">{job.name}</h2>
         <StatusPill tone={statusTone}>{statusText}</StatusPill>
+      </div>
+
+      <div className="job-card__type">
+        <JobTypeBadge job={job} />
       </div>
 
       {chips.length ? (
