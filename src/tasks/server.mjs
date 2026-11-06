@@ -455,6 +455,25 @@ export function isQueued(taskName, serialKey) {
   return Boolean(serialKey && (SERIAL_QUEUES.get(serialKey) ?? []).some((q) => q.taskName === taskName));
 }
 
+// Shared by the task app's /api/run route and FL0W's unified job API.
+export function requestTaskRun(taskName, payload = {}) {
+  const task = TASK_MAP.get(taskName);
+  if (!task) return { status: 404, body: { detail: 'Unknown task' } };
+  if (RUNS.has(taskName)) return { status: 409, body: { detail: 'This task is already running' } };
+  if (serialKeyHeld(task.serial_key)) {
+    if (!isQueued(taskName, task.serial_key)) {
+      const q = SERIAL_QUEUES.get(task.serial_key) ?? [];
+      q.push({ taskName, payload });
+      SERIAL_QUEUES.set(task.serial_key, q);
+    }
+    return { status: 200, body: { started: true, queued: true } };
+  }
+  const [avail, reason] = availability(task, LOCAL);
+  if (!avail) return { status: 400, body: { detail: reason } };
+  startRun(taskName, payload);
+  return { status: 200, body: { started: true } };
+}
+
 // Shared by the task app's /api/cancel route and FL0W's unified job API.
 export function cancelRun(taskName) {
   const rec = RUNS.get(taskName);
