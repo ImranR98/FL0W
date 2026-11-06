@@ -13,7 +13,7 @@ function restoreRoots(daemon) {
   const roots = [];
   for (const folder of daemon.store.listFolders()) {
     const def = folder.def;
-    for (const root of [def.destination, ...(def.sources ?? [])]) {
+    for (const root of [def.source, def.destination, ...(def.sources ?? [])]) {
       if (root) roots.push(path.resolve(root));
     }
   }

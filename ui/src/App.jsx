@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, RefreshCw, SlidersHorizontal, Workflow } from 'lucide-react'
-import { AppHeader, Field, getBrand, getJson, postJson, putJson, showToast, ThemeToggle, Toasts, uploadFile as uploadFileRequest, usePolling } from '@dscpln/ui-kit'
-import { useDropzone } from '../../src/tasks/ui/src/hooks/useDropzone.js'
+import { Pause, Play, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { AppHeader, Button, Dropzone, EmptyState, Field, getBrand, getJson, Page, postJson, putJson, showToast, ThemeToggle, Toasts, uploadFile as uploadFileRequest, usePolling } from '@dscpln/ui-kit'
 import { pruneTarGz } from '../../src/tasks/ui/src/lib/prune-tar-gz.js'
 import TaskCard from '../../src/tasks/ui/src/components/TaskCard.jsx'
 import AttributesModal from '../../src/tasks/ui/src/components/AttributesModal.jsx'
@@ -11,8 +10,19 @@ import FieldsModal from '../../src/tasks/ui/src/components/modals/FieldsModal.js
 import PickerModal from '../../src/tasks/ui/src/components/modals/PickerModal.jsx'
 import ResultModal from '../../src/tasks/ui/src/components/modals/ResultModal.jsx'
 import PipelineCard from './components/PipelineCard.jsx'
+import PipelineDetail from './PipelineDetail.jsx'
 
 const UNASSIGNED = 'Unassigned'
+
+function readRoute() {
+  const hash = window.location.hash.replace(/^#\/?/, '')
+  const match = hash.match(/^jobs\/pipeline\/(.+)$/)
+  return match ? { view: 'pipeline', name: decodeURIComponent(match[1]) } : { view: 'home' }
+}
+
+const go = (href) => {
+  window.location.hash = href.startsWith('#') ? href : `#${href}`
+}
 
 function attributeValues(attribute, tasks) {
   const defined = attribute?.values ?? []
@@ -39,8 +49,8 @@ function groupJobs(jobs, groupBy, filterValue, attribute) {
 }
 
 export default function App() {
-  const [tasks, setTasks] = useState([])
-  const [pipelineState, setPipelineState] = useState(null)
+  const [jobs, setJobs] = useState([])
+  const [paused, setPaused] = useState(false)
   const [missingConfig, setMissingConfig] = useState(false)
   const [queues, setQueues] = useState({})
   const [preparing, setPreparing] = useState({})
@@ -56,6 +66,7 @@ export default function App() {
   const [groupBy, setGroupBy] = useState('')
   const [filterValue, setFilterValue] = useState('')
   const [attributesOpen, setAttributesOpen] = useState(false)
+  const [route, setRoute] = useState(() => readRoute())
 
   const uploadAborts = useRef(new Map())
 
@@ -85,12 +96,12 @@ export default function App() {
 
   /* ---------- task data ---------- */
 
-  const loadTasks = useCallback(async () => {
+  const loadJobs = useCallback(async () => {
     try {
-      const data = await getJson('/tasks/api/tasks')
-      const nextGroups = data.groups || []
+      const data = await getJson('/api/jobs')
       const nextAttributes = data.attributes || []
-      setTasks(data.tasks || nextGroups.flatMap((group) => group.tasks))
+      setJobs(data.jobs || [])
+      setPaused(Boolean(data.paused))
       setAttributes(nextAttributes)
       setDefaultGroupBy(data.default_group_by || '')
       setGroupBy((current) => (
@@ -105,15 +116,8 @@ export default function App() {
     }
   }, [])
 
+  const tasks = jobs.filter((job) => job.type === 'task')
   const taskByName = (name) => tasks.find((task) => task.name === name)
-
-  const loadPipelines = useCallback(async () => {
-    try {
-      setPipelineState(await getJson('/pipelines/api/state'))
-    } catch {
-      // keep the last known state
-    }
-  }, [])
 
 
   /* ---------- upload queue ---------- */
@@ -238,7 +242,7 @@ export default function App() {
       }
     }
     try {
-      const result = await postJson(`/tasks/api/run/${encodeURIComponent(task.name)}`, extra)
+      const result = await postJson(`/api/jobs/${encodeURIComponent(task.id)}/run`, extra)
       if (task.uploads) {
         setQueues((current) => {
           const next = { ...current }
@@ -251,7 +255,7 @@ export default function App() {
         setOpenBrowsers((current) => ({ ...current, [task.name]: true }))
       }
       if (result?.queued) toast(`${task.name} queued — another task sharing its destination is running`, 'error')
-      await loadTasks()
+      await loadJobs()
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -288,7 +292,7 @@ export default function App() {
       await postJson(`/tasks/api/actions/${encodeURIComponent(task.name)}/${encodeURIComponent(action.key)}`, extra)
       setLiveLogs((current) => ({ ...current, [task.name]: [] }))
       toast(`${task.name} — ${action.label} started`)
-      await loadTasks()
+      await loadJobs()
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -312,7 +316,8 @@ export default function App() {
       return
     }
     try {
-      const result = await postJson('/tasks/api/cancel', { task: taskName })
+      const task = taskByName(taskName)
+      const result = await postJson(`/api/jobs/${encodeURIComponent(task?.id ?? taskName)}/cancel`, {})
       if (result?.queued) toast('Removed from queue', 'error')
       else toast('Stopping the task…', 'error')
     } catch (err) {
@@ -360,8 +365,6 @@ export default function App() {
     }
   }
 
-  const globalDropRef = useDropzone(handleGlobalFiles)
-
   /* ---------- polling + logs ---------- */
 
   const finishPaste = async (task, close) => {
@@ -408,12 +411,12 @@ export default function App() {
             .catch(() => {})
         }
       }
-      if (activity) await loadTasks()
+      if (activity) await loadJobs()
     } catch {
       // transient poll failure
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadTasks])
+  }, [loadJobs])
 
   const openLog = async (task) => {
     if (task.running) {
@@ -421,7 +424,7 @@ export default function App() {
       return
     }
     try {
-      const { output } = await getJson(`/tasks/api/log/${encodeURIComponent(task.name)}`)
+      const { output } = await getJson(`/api/jobs/${encodeURIComponent(task.id)}/log`)
       resultModal(`${task.name} — log`, output || '(no log recorded yet)')
     } catch (err) {
       toast(err.message, 'error')
@@ -429,36 +432,38 @@ export default function App() {
   }
 
   const saveSettings = async (task, settings) => {
-    const saved = await putJson(`/tasks/api/tasks/${encodeURIComponent(task.name)}/settings`, settings)
+    const saved = await putJson(`/api/jobs/${encodeURIComponent(task.id)}/settings`, settings)
     setSettingsTask(null)
-    toast('Task settings saved.')
-    await loadTasks()
+    toast('Job settings saved.')
+    await loadJobs()
     return saved
   }
 
   const saveAttributes = async (settings) => {
-    const saved = await putJson('/tasks/api/attributes', settings)
+    const saved = await putJson('/api/attributes', settings)
+    setAttributes(saved.attributes ?? attributes)
+    setDefaultGroupBy(saved.default_group_by ?? defaultGroupBy)
     setAttributesOpen(false)
     toast('Attributes saved.')
-    await loadTasks()
+    await loadJobs()
     return saved
   }
 
-  const runPipeline = async (folder) => {
+  const runPipeline = async (job) => {
     try {
-      const result = await postJson(`/pipelines/api/process/${encodeURIComponent(folder.name)}`, {})
-      toast(result?.processed ? `${folder.name}: queued ${result.processed} file(s)` : `${folder.name}: no files to process`)
-      await loadPipelines()
+      const result = await postJson(`/api/jobs/${encodeURIComponent(job.id)}/run`, {})
+      toast(result?.processed ? `${job.name}: queued ${result.processed} file(s)` : `${job.name}: no files to process`)
+      await loadJobs()
     } catch (err) {
       toast(err.message, 'error')
     }
   }
 
-  const togglePipelinePaused = async () => {
+  const togglePaused = async () => {
     try {
-      await postJson('/pipelines/api/pause', { paused: !pipelineState?.paused })
-      toast(pipelineState?.paused ? 'Pipeline processing resumed' : 'Pipeline processing paused')
-      await loadPipelines()
+      await postJson('/pipelines/api/pause', { paused: !paused })
+      toast(paused ? 'Pipeline processing resumed' : 'Pipeline processing paused')
+      await loadJobs()
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -471,25 +476,46 @@ export default function App() {
   }, [liveLogs])
 
   useEffect(() => {
-    loadTasks()
-    loadPipelines()
-  }, [loadTasks, loadPipelines])
+    loadJobs()
+  }, [loadJobs])
+
+  useEffect(() => {
+    const onHashChange = () => setRoute(readRoute())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
   // Poll run status while the page is open (the poll callback is refreshed
   // internally, so this timer never restarts).
   usePolling(poll, 700, { runImmediately: false })
-  usePolling(loadPipelines, 5000, { runImmediately: false })
 
-  const pipelineJobs = (pipelineState?.folders ?? []).map((folder) => ({
-    ...folder,
-    type: 'pipeline',
-    attributes: folder.attributes ?? { Category: folder.category ?? 'Pipelines' },
-  }))
-  const jobs = [...tasks.map((task) => ({ ...task, type: 'task' })), ...pipelineJobs]
   const groupingAttribute = attributes.find((attribute) => attribute.name === groupBy)
   const filterValues = attributeValues(groupingAttribute, jobs)
   const activeFilter = filterValues.includes(filterValue) ? filterValue : ''
   const visibleGroups = groupJobs(jobs, groupBy, activeFilter, groupingAttribute)
+  const openPipeline = (job) => go(`/jobs/pipeline/${encodeURIComponent(job.name)}`)
+
+  if (route.view === 'pipeline') {
+    const job = jobs.find((entry) => entry.type === 'pipeline' && entry.name === route.name)
+    return (
+      <>
+        {job ? (
+          <PipelineDetail
+            job={job}
+            attributes={attributes}
+            onChanged={loadJobs}
+            onBack={() => go('/')}
+          />
+        ) : (
+          <>
+            <AppHeader brand={getBrand('fl0w')} name={route.name} back={{ href: '#/', label: 'All jobs' }} />
+            <Page width="wide"><EmptyState title="Pipeline not found" description="It may have been renamed or removed." /></Page>
+          </>
+        )}
+        <Toasts />
+      </>
+    )
+  }
 
   /* ---------- render ---------- */
 
@@ -503,33 +529,23 @@ export default function App() {
             {missingConfig ? (
               <span className="alert-badge">Missing config.mjs — create it (see README.md for the schema)</span>
             ) : null}
-            <button
-              className="outline secondary icon-button"
-              type="button"
-              title={pipelineState?.paused ? 'Resume pipeline processing' : 'Pause pipeline processing'}
+            <Button
+              variant="outline"
+              icon={paused ? Play : Pause}
+              title={paused ? 'Resume pipeline processing' : 'Pause pipeline processing'}
               aria-label="Pause or resume pipeline processing"
-              onClick={togglePipelinePaused}
-            >
-              {pipelineState?.paused ? <Play size={16} strokeWidth={1.8} /> : <Pause size={16} strokeWidth={1.8} />}
-            </button>
-            <a className="outline secondary icon-button button-link" href="/pipelines/" title="Full pipeline view" aria-label="Full pipeline view">
-              <Workflow size={16} strokeWidth={1.8} />
-            </a>
-            <button id="refreshButton" className="outline secondary icon-button" title="Refresh" aria-label="Refresh jobs" onClick={() => { loadTasks(); loadPipelines() }}>
-              <RefreshCw size={16} strokeWidth={1.8} />
-            </button>
+              onClick={togglePaused}
+            />
+            <Button variant="outline" icon={RefreshCw} title="Refresh" aria-label="Refresh jobs" onClick={() => loadJobs()} />
             <ThemeToggle />
           </>
         )}
       />
 
-      <main className="page-wrap">
+      <Page width="wide">
         <section className="card global-drop">
           <p className="hint">Drop an export file anywhere here — it is detected, you confirm, it runs.</p>
-          <div className="dropzone-box" id="global-dropzone" tabIndex="0" ref={globalDropRef}>
-            <span className="dropzone-note">Drop files here or click to browse</span>
-            <input type="file" multiple hidden onChange={(event) => { handleGlobalFiles(event.target.files); event.target.value = '' }} />
-          </div>
+          <Dropzone onFiles={handleGlobalFiles} label="Drop files here or choose files" hint="Files are matched to the right job automatically" />
         </section>
 
         <section className="card task-toolbar">
@@ -560,19 +576,20 @@ export default function App() {
                 {filterValues.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </Field>
-            <button
-              className="outline secondary task-toolbar__manage"
+            <Button
+              variant="outline"
+              icon={SlidersHorizontal}
+              className="task-toolbar__manage"
               data-testid="manage-attributes"
               onClick={() => setAttributesOpen(true)}
             >
-              <SlidersHorizontal size={16} strokeWidth={1.8} />
               Attributes
-            </button>
+            </Button>
           </div>
           <p className="hint">
-            Grouped by {groupBy || 'job'}. Task schedules and attributes live in jobs-meta.json; pipeline jobs add
-            their schedules to the pipeline config. Legacy full views: <a href="/tasks/">tasks</a> · <a href="/pipelines/">pipelines</a>.
-            {defaultGroupBy && defaultGroupBy !== groupBy ? ` Default: ${defaultGroupBy}.` : ''}
+            Grouped by {groupBy || 'job'}. Schedules, categories and notifications for every job live in
+            jobs-meta.json.
+            {defaultGroupBy && defaultGroupBy !== groupBy ? ` Default grouping: ${defaultGroupBy}.` : ''}
           </p>
         </section>
 
@@ -585,7 +602,7 @@ export default function App() {
             <div className="task-grid">
               {group.jobs.map((job) => (
                 job.type === 'pipeline' ? (
-                  <PipelineCard key={job.name} job={job} onRun={runPipeline} onOpen={`/pipelines/`} />
+                  <PipelineCard key={job.id} job={job} onRun={runPipeline} onOpen={openPipeline} />
                 ) : (
                   <TaskCard
                     key={job.name}
@@ -613,10 +630,12 @@ export default function App() {
           </div>
         ))}
 
-        {!visibleGroups.length ? <p className="hint">No jobs match this filter.</p> : null}
+        {!visibleGroups.length ? (
+          <EmptyState title="No jobs match this filter" description="Change the group or filter, or add a job to the config." />
+        ) : null}
 
         <p className="footer-note">Run state is stored in the gitignored .state folder of the config repo; dropped files are held in the browser until you click Run.</p>
-      </main>
+      </Page>
 
       {settingsTask ? (
         <TaskSettingsModal

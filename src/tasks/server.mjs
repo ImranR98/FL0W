@@ -143,16 +143,19 @@ export async function runCommands(ctx) {
     .map((key) => resolve(`{{${key}}}`, ctx.local ?? {}))
     .filter((value) => value !== undefined && !/^\{\{[^}]+\}\}$/.test(String(value)))
     .map(String);
-  const redact = [...new Set([...Object.values(ctx.extra).filter((v) => v).map(String), ...secretValues])];
   const output = [];
   const cwd = expand(resolve(task.cwd ?? '.', ctx.local));
   const groups = ctx.groups ?? new Set();
   const env = { TMPDIR: ctx.tmpdir };
+  const envValues = [];
   // Per-task environment values are config tokens (not prompt inputs). Keep
   // secrets in the environment instead of argv so the logged command is clean.
   for (const [key, value] of Object.entries(task.env ?? {})) {
-    env[key] = String(resolve(value, ctx.local ?? {}));
+    const resolved = String(resolve(value, ctx.local ?? {}));
+    env[key] = resolved;
+    if (resolved && !/^\{\{[^}]+\}\}$/.test(resolved)) envValues.push(resolved);
   }
+  const redact = [...new Set([...Object.values(ctx.extra).filter((v) => v).map(String), ...secretValues, ...envValues])];
   // Optional per-task identity: user-data tasks run as the host owner while
   // the server stays root for backup/recovery tasks. The deployment grants
   // CAP_SETUID/CAP_SETGID only for this drop-privilege path.
@@ -263,7 +266,7 @@ export function runAvailabilityCheck(command) {
   return entry;
 }
 
-export function availability(task, local) {
+export function availability(task, local, { allowCheck = true } = {}) {
   const host = task.host ?? 'any';
   const here = local?.host ?? instanceHost();
   if (host !== 'any' && host !== here) return [false, `Pinned to ${host}`];
@@ -275,8 +278,17 @@ export function availability(task, local) {
   }
   if (task.check) {
     const command = expand(resolve(task.check, local));
-    const { ok, reason } = runAvailabilityCheck(command);
-    if (!ok) return [false, `Unavailable: ${reason}`];
+    if (allowCheck) {
+      const { ok, reason } = runAvailabilityCheck(command);
+      if (!ok) return [false, `Unavailable: ${reason}`];
+    } else {
+      // Health/metrics must never execute a task check. Reuse a fresh cached
+      // result if one exists; otherwise report the task as available.
+      const cached = CHECK_CACHE.get(command);
+      if (cached && Date.now() - cached.ts < CHECK_TTL_MS && !cached.ok) {
+        return [false, `Unavailable: ${cached.reason}`];
+      }
+    }
   }
   return [true, ''];
 }
@@ -448,7 +460,7 @@ function drainSerialQueue(key) {
   if (!key || serialKeyHeld(key)) return;
   const next = SERIAL_QUEUES.get(key)?.shift();
   if (!next) return;
-  startRun(next.taskName, next.payload);
+  startRun(next.taskName, next.payload, next.options?.trigger ?? 'manual', null, next.options ?? {});
 }
 
 export function isQueued(taskName, serialKey) {
@@ -456,21 +468,21 @@ export function isQueued(taskName, serialKey) {
 }
 
 // Shared by the task app's /api/run route and FL0W's unified job API.
-export function requestTaskRun(taskName, payload = {}) {
+export function requestTaskRun(taskName, payload = {}, options = {}) {
   const task = TASK_MAP.get(taskName);
   if (!task) return { status: 404, body: { detail: 'Unknown task' } };
   if (RUNS.has(taskName)) return { status: 409, body: { detail: 'This task is already running' } };
   if (serialKeyHeld(task.serial_key)) {
     if (!isQueued(taskName, task.serial_key)) {
       const q = SERIAL_QUEUES.get(task.serial_key) ?? [];
-      q.push({ taskName, payload });
+      q.push({ taskName, payload, options });
       SERIAL_QUEUES.set(task.serial_key, q);
     }
     return { status: 200, body: { started: true, queued: true } };
   }
   const [avail, reason] = availability(task, LOCAL);
   if (!avail) return { status: 400, body: { detail: reason } };
-  startRun(taskName, payload);
+  startRun(taskName, payload, options.trigger ?? 'manual', null, options);
   return { status: 200, body: { started: true } };
 }
 
@@ -492,7 +504,7 @@ export function cancelRun(taskName) {
   return null;
 }
 
-export function startRun(taskName, payload = {}, trigger = 'manual', actionKey = null) {
+export function startRun(taskName, payload = {}, trigger = 'manual', actionKey = null, options = {}) {
   const baseTask = TASK_MAP.get(taskName);
   const action = actionKey ? (baseTask.actions ?? []).find((entry) => entry.key === actionKey) : null;
   if (actionKey && !action) throw new Error(`Unknown action '${actionKey}' for ${taskName}`);
@@ -545,8 +557,23 @@ export function startRun(taskName, payload = {}, trigger = 'manual', actionKey =
         trigger,
       });
       if (DONE.length > DONE_LIMIT) DONE.splice(0, DONE.length - DONE_LIMIT);
+      const endedAt = Date.now();
+      try {
+        options.onFinish?.({
+          ok,
+          summary,
+          startedAt: rec.ts * 1000,
+          endedAt,
+          durationSec: Math.max(0, (endedAt - rec.ts * 1000) / 1000),
+          trigger,
+        });
+      } catch (err) {
+        console.error(`run finish callback failed: ${err.message}`);
+      }
       drainSerialQueue(task.serial_key);
-      notifyTask(task, ok, summary).catch((err) => console.error(`notification failed: ${err.message}`));
+      if (options.notify !== false) {
+        notifyTask(task, ok, summary).catch((err) => console.error(`notification failed: ${err.message}`));
+      }
     }
   })().catch((e) => console.error('worker error:', e));
 }
@@ -628,8 +655,8 @@ function actionJson(task, action) {
   }
 }
 
-export function taskJson(t) {
-  const [avail, reason] = availability(t, LOCAL);
+export function taskJson(t, { checkAvailability = true } = {}) {
+  const [avail, reason] = availability(t, LOCAL, { allowCheck: checkAvailability });
   let stateJson = null;
   const marker = runningMarker()?.find((m) => m.task === t.name);
   if (marker && !RUNS.has(t.name)) {
@@ -723,7 +750,7 @@ export function metricsText() {
     '# TYPE task_runner_task_available gauge',
   ]
   for (const task of TASK_LIST) {
-    const t = taskJson(task)
+    const t = taskJson(task, { checkAvailability: false })
     const labels = `task="${metricEscape(t.name)}",group="${metricEscape(t.group ?? '')}"`
     lines.push(`task_runner_task_last_run_timestamp_seconds{${labels}} ${t.state?.ts ?? 0}`)
     lines.push(`task_runner_task_last_run_ok{${labels}} ${t.state?.ok ? 1 : 0}`)

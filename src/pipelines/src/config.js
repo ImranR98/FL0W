@@ -3,6 +3,18 @@ import path from "node:path";
 import { configStore, expandPath, normalizeSpec, readJsonFile, specValid } from "@dscpln/server-kit";
 
 export const METHODS = ["standardize", "snapchat", "copy", "reviewed-audio"];
+// Folder names may contain spaces (existing configs use them) and are used as
+// path segments. Only separators, traversal and control characters are unsafe.
+export const FOLDER_NAME_RE = /^[^./\\]/;
+
+export function isValidFolderName(name) {
+  const value = String(name ?? "");
+  if (!value || value.length > 120 || value !== value.trim()) return false;
+  if (value === "." || value === "..") return false;
+  if (/[/\\]/.test(value)) return false;
+  if ([...value].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) return false;
+  return FOLDER_NAME_RE.test(value);
+}
 export const MANUAL_PLACEMENT_METHODS = new Set(["standardize", "snapchat", "reviewed-audio"]);
 
 export function defaultConfig() {
@@ -100,6 +112,9 @@ export function validateConfig(cfg) {
   const seen = new Set();
   for (const folder of cfg.folders) {
     if (!folder.name) errors.push("folder with empty name");
+    else if (!isValidFolderName(folder.name)) {
+      errors.push(`folder name is invalid: ${folder.name} (no path separators or leading dots)`);
+    }
     if (seen.has(folder.name)) errors.push(`duplicate folder name: ${folder.name}`);
     seen.add(folder.name);
     if (!folder.source) errors.push(`folder ${folder.name}: missing source`);
@@ -132,6 +147,7 @@ export function validateConfig(cfg) {
   if (errors.length > 0) {
     const err = new Error(`invalid config: ${errors.join("; ")}`);
     err.validationErrors = errors;
+    err.statusCode = 400;
     throw err;
   }
   return cfg;

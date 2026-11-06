@@ -70,3 +70,67 @@
     margin-top: var(--space-3);
     font-size: var(--fs-sm);
 }
+
+
+/* Unified job cards */
+.job-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.pipeline-card__method {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pipeline-card__paths {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.pipeline-card__paths code {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 0.1rem 0.35rem;
+}
+
+.pipeline-card__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.pipeline-card__stats strong {
+    color: var(--text);
+}
+
+.pipeline-card__pace {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+}
+
+.pipeline-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: auto;
+    padding-top: var(--space-2);
+}
+
+/* Keep primary actions readable on narrow cards. */
+.pipeline-card__actions .btn {
+    flex: 1 1 auto;
+}

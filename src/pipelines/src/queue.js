@@ -148,13 +148,28 @@ export class Queue {
   }
 
   #reserve(folderName) {
+    const first = !this.active.has(folderName);
     this.active.add(folderName);
     this.running++;
+    if (first) {
+      try {
+        this.ctx.onJobStart?.(folderName);
+      } catch (err) {
+        this.ctx.log(`job start hook failed: ${err.message}`);
+      }
+    }
   }
 
   #release(folderName) {
-    this.active.delete(folderName);
+    const wasActive = this.active.delete(folderName);
     this.running = Math.max(0, this.running - 1);
+    if (wasActive && !this.active.has(folderName)) {
+      try {
+        this.ctx.onJobEnd?.(folderName);
+      } catch (err) {
+        this.ctx.log(`job end hook failed: ${err.message}`);
+      }
+    }
     setTimeout(() => this.tick(), 0).unref?.();
   }
 

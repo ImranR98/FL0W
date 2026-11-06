@@ -82,4 +82,39 @@ test('FL0W serves the unified job API and both legacy views', async (t) => {
   await fsp.writeFile(path.join(root, 'src', 'sample.txt'), 'hello pipeline')
   const processed = await fetch(`${base}/api/jobs/Camera/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   assert.equal(processed.status, 200)
+
+  // Unified run history records task and pipeline runs under the same model.
+  const taskRuns = await (await fetch(`${base}/api/jobs/task:Echo/runs`)).json()
+  assert.equal(taskRuns.runs.length, 1)
+  assert.equal(taskRuns.runs[0].ok, true)
+  const pipelineRuns = await (await fetch(`${base}/api/jobs/pipeline:Camera/runs`)).json()
+  assert.equal(pipelineRuns.runs.length, 1)
+  assert.equal(pipelineRuns.runs[0].trigger, 'manual')
+
+  // Metadata is persisted in one file shared by tasks and pipelines.
+  const at = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  const patched = await fetch(`${base}/api/jobs/task:Echo`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ schedule: { enabled: true, days: [], at: hhmm, catchUp: true } }),
+  })
+  assert.equal(patched.status, 200)
+  const patchedJob = await patched.json()
+  assert.equal(patchedJob.schedule.enabled, true)
+  assert.ok(patchedJob.next_run > Date.now())
+
+  const metaFile = path.join(root, 'jobs-meta.json')
+  const meta = JSON.parse(await fsp.readFile(metaFile, 'utf8'))
+  assert.equal(meta.jobs['task:Echo'].schedule.at, hhmm)
+  assert.ok(meta.jobs['pipeline:Camera'])
+
+  const attributes = await (await fetch(`${base}/api/attributes`)).json()
+  assert.ok(attributes.attributes.some((attribute) => attribute.name === 'Category'))
+  const saved = await fetch(`${base}/api/attributes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attributes: attributes.attributes, default_group_by: 'Category' }),
+  })
+  assert.equal(saved.status, 200)
 })

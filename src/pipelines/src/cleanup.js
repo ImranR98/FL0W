@@ -261,6 +261,7 @@ export async function emptyTrash(ctx) {
   const { config, log } = ctx;
   const days = await fsp.readdir(config.trashDir).catch(() => []);
   for (const day of days) {
+    if (!isValidDay(day)) continue;
     await fsp.rm(path.join(config.trashDir, day), { recursive: true, force: true });
   }
   log("emptied trash");

@@ -76,3 +76,14 @@ test("config: a source is required for every folder method", () => {
     /unknown method/,
   );
 });
+
+test("config: folder names allow spaces but reject traversal and separators", () => {
+  const base = (name) => ({
+    ...defaultConfig(),
+    folders: [{ name, source: "/s", destination: "/d", method: "copy" }],
+  });
+  assert.doesNotThrow(() => validateConfig(base("WhatsApp Voice Notes")));
+  for (const name of ["..", ".hidden", "a/b", "a\\b", " leading"]) {
+    assert.throws(() => validateConfig(base(name)), /folder name is invalid/, name);
+  }
+});
