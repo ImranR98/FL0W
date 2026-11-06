@@ -1,0 +1,72 @@
+/* FL0W additions on top of the task-runner and shared kit styles. */
+
+.pipeline-job-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.pipeline-job-card__method {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pipeline-job-card__paths {
+    display: grid;
+    gap: var(--space-1);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.pipeline-job-card__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.pipeline-job-card__stats strong {
+    color: var(--text);
+}
+
+.pipeline-job-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.button-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-size: var(--fs-sm);
+}
+
+.fl0w-job-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+}
+
+.fl0w-job-toolbar .task-toolbar__field {
+    min-width: 11rem;
+}
+
+.fl0w-view-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    font-size: var(--fs-sm);
+}

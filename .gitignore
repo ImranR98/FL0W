@@ -1,0 +1,8 @@
+node_modules/
+config/
+static/
+src/tasks/static/
+src/pipelines/static/
+data/
+.DS_Store
+*.log
