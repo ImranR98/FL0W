@@ -1,5 +1,5 @@
 # GTK-capable FL0W agent for tools such as Ludusavi.
-FROM node:latest@sha256:a98e6fda54fdbb22d4238054cca9a2a113bcd1191c09193a535aae22f400aa8e
+FROM node:latest@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
