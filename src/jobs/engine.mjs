@@ -47,8 +47,8 @@ export class JobEngine {
 
   async start() {
     await this.reload()
-    this.daemon.ctx.onJobStart = (name) => this.#pipelineStart(name)
-    this.daemon.ctx.onJobEnd = (name) => this.#pipelineEnd(name)
+    this.daemon.ctx.onJobStart = (name, meta) => this.#pipelineStart(name, meta)
+    this.daemon.ctx.onJobEnd = (name, stats) => this.#pipelineEnd(name, stats)
     this.startSchedulers()
     return this
   }
@@ -204,7 +204,9 @@ export class JobEngine {
       pending,
       review,
       errors,
-      fileCount: folder.files.size,
+      // Progress is over considered files: ignored and already-cleaned
+      // entries must not make the completion percentage drop after a cleanup.
+      fileCount: Math.max(0, folder.files.size - (counts.ignored ?? 0) - (counts.cleaned ?? 0)),
       last_event_at: folder.lastEventAt,
       uploads: false,
       prompts: [],
@@ -307,6 +309,7 @@ export class JobEngine {
         return { status: result.busy ? 409 : 400, body: { ...result, type: 'pipeline' } }
       }
       if (!result.processed && !this.daemon.queue.active.has(folder.def.name)) {
+        this.pendingPipelineTrigger.delete(folder.def.name)
         const now = Date.now()
         await this.#finishRun(resolved, {
           ok: true,
@@ -357,6 +360,9 @@ export class JobEngine {
   async #finishRun(id, run) {
     const entry = this.#jobEntry(id)
     await this.runs.record(id, run)
+    // Pipeline runs notify per file (coalesced by the pipeline notifier). A
+    // job-level summary here would duplicate those messages.
+    if (this.#pipeline(id)) return
     if (entry.notify === 'never') return
     if (run.ok && entry.notify !== 'always') return
     const relayUrl = String(process.env.NOTIFY_RELAY_URL ?? '').trim()
@@ -373,32 +379,35 @@ export class JobEngine {
     await notifier.notifyResult({ ok: run.ok, app: job?.name ?? id, summary: run.summary })
   }
 
-  #pipelineStart(name) {
+  #pipelineStart(name, meta = {}) {
     const folder = this.daemon.store.getFolder(name)
     if (!folder) return
     const id = jobId('pipeline', name)
     const startedAt = Date.now()
-    const trigger = this.pendingPipelineTrigger.get(name) ?? 'watch'
+    const trigger = meta?.trigger ?? this.pendingPipelineTrigger.get(name) ?? 'watch'
     this.pipelineStarts.set(name, startedAt)
     this.pipelineTriggers.set(name, trigger)
     this.runs.begin(id, { startedAt, trigger }).catch((err) => this.logger(`pipeline begin failed: ${err.message}`))
   }
 
-  #pipelineEnd(name) {
+  #pipelineEnd(name, stats) {
     const folder = this.daemon.store.getFolder(name)
     if (!folder) return
     const id = jobId('pipeline', name)
     const startedAt = this.pipelineStarts.get(name) ?? Date.now()
     const trigger = this.pipelineTriggers.get(name) ?? 'watch'
-    const { counts, errors } = countFiles(folder)
-    const processed = (counts.done ?? 0) + (counts.duplicate ?? 0)
-    const summary = `${processed} processed · ${errors} issue${errors === 1 ? '' : 's'}`
+    const runStats = stats ?? { processed: 0, review: 0, issues: 0 }
+    const summary = [
+      `${runStats.processed} processed`,
+      runStats.review ? `${runStats.review} awaiting review` : null,
+      `${runStats.issues} issue${runStats.issues === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(' · ')
     this.pipelineStarts.delete(name)
     this.pipelineTriggers.delete(name)
     this.pendingPipelineTrigger.delete(name)
     const endedAt = Date.now()
     this.#finishRun(id, {
-      ok: errors === 0,
+      ok: runStats.issues === 0,
       summary,
       startedAt,
       endedAt,

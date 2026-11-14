@@ -14,7 +14,12 @@ export class Watchers {
     const wanted = new Map(config.folders.map((f) => [f.name, f]));
     for (const [name, entry] of [...this.map.entries()]) {
       const def = wanted.get(name);
-      if (!def || entry.source !== def.source || entry.recursive !== def.recursive) {
+      if (
+        !def
+        || entry.source !== def.source
+        || entry.recursive !== def.recursive
+        || entry.includeHidden !== def.includeHidden
+      ) {
         entry.watcher.close().catch(() => {});
         this.map.delete(name);
       }
@@ -22,6 +27,7 @@ export class Watchers {
     for (const [name, def] of wanted) {
       if (this.map.has(name)) continue;
       const root = path.resolve(def.source);
+      const includeHidden = def.includeHidden;
       const watcher = chokidar.watch(root, {
         depth: def.recursive ? undefined : 0,
         ignoreInitial: false,
@@ -29,7 +35,7 @@ export class Watchers {
         awaitWriteFinish: { stabilityThreshold: 5000, pollInterval: 500 },
         ignored: (p) => {
           if (path.resolve(p) === root) return false;
-          return shouldSkipName(path.basename(p), def.includeHidden);
+          return shouldSkipName(path.basename(p), includeHidden);
         },
       });
       watcher.on("add", (p) => this.#handle(name, p));
@@ -38,7 +44,13 @@ export class Watchers {
         this.store.removeFile(name, this.#keyFor(name, p), null);
       });
       watcher.on("error", (err) => this.log.log(`watcher error for ${def.source}: ${err.message}`));
-      this.map.set(name, { watcher, source: def.source, recursive: def.recursive, ready: false });
+      this.map.set(name, {
+        watcher,
+        source: def.source,
+        recursive: def.recursive,
+        includeHidden: def.includeHidden,
+        ready: false,
+      });
     }
   }
 

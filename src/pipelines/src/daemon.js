@@ -79,7 +79,10 @@ export class Daemon {
       await this.store.scanFolder(folder.def.name);
     }
 
-    this.queue.start();
+    // The unified server defers the queue until the job engine has attached
+    // its start/end hooks; otherwise a fast file processed during startup is
+    // never recorded as a run.
+    if (this.options.startQueue !== false) this.queue.start();
     this.rescanTimer = setInterval(() => this.#rescan(), 60_000);
     this.rescanTimer.unref?.();
     this.sweepTimer = setInterval(() => sweepTrash(this.ctx).catch(() => {}), 3600_000);
@@ -107,6 +110,7 @@ export class Daemon {
     clearInterval(this.sweepTimer);
     await this.api?.close().catch(() => {});
     await this.watchers?.close().catch(() => {});
+    await this.notify?.flush().catch(() => {});
     await this.lock?.release().catch(() => {});
     this.log?.log("File Pipelines stopped");
     this.log?.close();

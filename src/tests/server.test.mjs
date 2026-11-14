@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import http from 'node:http'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-async function fixture(t) {
+async function fixture(t, { relayUrl = null } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'fl0w-test-'))
   const dirs = ['src', 'dest', 'staging', 'review', 'trash', 'logs', 'state', 'home']
   for (const dir of dirs) await fsp.mkdir(path.join(root, dir), { recursive: true })
@@ -34,11 +35,15 @@ async function fixture(t) {
   process.env.BACKUPCTL_STATE_DIR = path.join(root, 'state')
   process.env.BACKUPCTL_TMP_DIR = path.join(root, 'tmp')
   process.env.HOME = path.join(root, 'home')
+  const previousRelay = process.env.NOTIFY_RELAY_URL
+  if (relayUrl) process.env.NOTIFY_RELAY_URL = relayUrl
   const { startFl0w } = await import('../server.mjs')
   const app = await startFl0w({ port: 0, host: '127.0.0.1', pipelineConfig, log: () => {} })
   const port = app.server.address().port
   t.after(async () => {
     await app.stop().catch(() => {})
+    if (previousRelay === undefined) delete process.env.NOTIFY_RELAY_URL
+    else process.env.NOTIFY_RELAY_URL = previousRelay
     await fsp.rm(root, { recursive: true, force: true })
   })
   return { root, base: `http://127.0.0.1:${port}`, app }
@@ -84,7 +89,11 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   }
   assert.match(output, /hello from fl0w/)
 
+  // Keep the watcher out of the way so the manual run is the one that
+  // processes the sample and records the run.
+  app.daemon.config.paused = true
   await fsp.writeFile(path.join(root, 'src', 'sample.txt'), 'hello pipeline')
+  await app.daemon.store.scanFolder('Camera')
   const processed = await fetch(`${base}/api/jobs/Camera/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   assert.equal(processed.status, 200)
 
@@ -92,9 +101,17 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
   const taskRuns = await (await fetch(`${base}/api/jobs/task:Echo/runs`)).json()
   assert.equal(taskRuns.runs.length, 1)
   assert.equal(taskRuns.runs[0].ok, true)
-  const pipelineRuns = await (await fetch(`${base}/api/jobs/pipeline:Camera/runs`)).json()
+  let pipelineRuns = { runs: [] }
+  for (let i = 0; i < 50; i++) {
+    pipelineRuns = await (await fetch(`${base}/api/jobs/pipeline:Camera/runs`)).json()
+    if (pipelineRuns.runs.length > 0) break
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
   assert.equal(pipelineRuns.runs.length, 1)
   assert.equal(pipelineRuns.runs[0].trigger, 'manual')
+  assert.equal(pipelineRuns.runs[0].summary, '1 processed · 0 issues')
+  assert.equal(pipelineRuns.runs[0].ok, true)
+  app.daemon.config.paused = false
 
   // Metadata is persisted in one file shared by tasks and pipelines.
   const at = new Date(Date.now() + 2 * 60 * 60 * 1000)
@@ -151,4 +168,47 @@ test('FL0W serves the unified job API and redirects legacy views', async (t) => 
     body: JSON.stringify({ attributes: attributes.attributes, default_group_by: 'Category' }),
   })
   assert.equal(saved.status, 200)
+})
+
+test('pipeline runs send one coalesced file notification and no run summary', async (t) => {
+  const received = []
+  const relay = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => (body += chunk))
+    req.on('end', () => {
+      try {
+        received.push(JSON.parse(body))
+      } catch {
+        received.push({ raw: body })
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{}')
+    })
+  })
+  await new Promise((resolve) => relay.listen(0, '127.0.0.1', resolve))
+  try {
+    const { base, root, app } = await fixture(t, {
+      relayUrl: `http://127.0.0.1:${relay.address().port}`,
+    })
+    app.daemon.config.paused = true
+    await fsp.writeFile(path.join(root, 'src', 'sample.txt'), 'hello pipeline')
+    await app.daemon.store.scanFolder('Camera')
+    const run = await fetch(`${base}/api/jobs/Camera/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    assert.equal(run.status, 200)
+    for (let i = 0; i < 100 && received.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    assert.equal(received.length, 1)
+    assert.equal(received[0].title, 'FL0W - Pipelines')
+    assert.match(received[0].message, /sample\.txt/)
+    assert.doesNotMatch(received[0].title, /Camera OK/)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    assert.equal(received.length, 1, 'the job engine must not append a run summary')
+  } finally {
+    await new Promise((resolve) => relay.close(resolve))
+  }
 })

@@ -196,7 +196,9 @@ inside a synced tree.
 
 Notifications are relayed through DA5H (`NOTIFY_RELAY_URL`), whose
 Settings hold the ntfy URL and token. Without a relay configured they are
-skipped.
+skipped. Successful file notices are coalesced per folder after a short quiet
+window (3s, hard-flushed after 30s) so a large import produces one message
+instead of one request per file; warnings and failures still send immediately.
 
 ## CLI
 

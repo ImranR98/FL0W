@@ -198,7 +198,7 @@ async function trashInputs(ctx, folder, inputs, destName) {
     if (!exists) continue;
     try {
       await trashFile(ctx, sourcePath, {
-        sourceDir: folder.def.source,
+        sourceDir: path.dirname(sourcePath),
         folder: folder.def.name,
         destName,
       });
@@ -224,9 +224,14 @@ async function approveStandardizeFile(ctx, folder, file) {
   const result = await processStandardize(ctx, autoFolder, state, { forcedDate, bestEffortDates: true });
   if (result.status === "done") {
     const trash = await trashInputs(ctx, folder, [file], result.destName);
-    ctx.notify.notify("info", `${folder.def.name}: standardized ${file} → ${result.destName}`);
+    ctx.queue?.patchRunStats?.(folder.def.name, { processed: 1 });
+    ctx.notify.notify("info", `${folder.def.name}: standardized ${file} → ${result.destName}`, {
+      batchKey: folder.def.name,
+    });
     if (trash.failed.length) {
-      ctx.notify.notify("warn", `${folder.def.name}: standardized, but ${trash.failed.length} source file(s) could not be moved to trash`);
+      ctx.notify.notify("warn", `${folder.def.name}: standardized, but ${trash.failed.length} source file(s) could not be moved to trash`, {
+        batchKey: folder.def.name,
+      });
     }
     return { ok: true, file, destName: result.destName, ...trash };
   }
@@ -276,8 +281,11 @@ export async function approveReviewedAudioGroup(ctx, folder, { chat, date, file 
           );
         }
         const trash = await trashInputs(ctx, folder, inputs, destName);
+        ctx.queue?.patchRunStats?.(folder.def.name, { processed: inputs.length });
         ctx.log(`already merged ${inputs.length} audio clip(s) → ${destName}; source clips moved to trash`);
-        ctx.notify.notify("info", `${folder.def.name}: already merged → ${destName}; source clips moved to trash`);
+        ctx.notify.notify("info", `${folder.def.name}: already merged → ${destName}; source clips moved to trash`, {
+          batchKey: folder.def.name,
+        });
         return { ok: true, alreadyPlaced: true, destName, inputs, ...trash };
       }
 
@@ -291,10 +299,15 @@ export async function approveReviewedAudioGroup(ctx, folder, { chat, date, file 
       }
       ctx.store.invalidateDest(folder.def.name);
       const trash = await trashInputs(ctx, folder, inputs, destName);
+      ctx.queue?.patchRunStats?.(folder.def.name, { processed: inputs.length });
       ctx.log(`merged ${inputs.length} audio clip(s) → ${destName}`);
-      ctx.notify.notify("info", `${folder.def.name}: merged ${inputs.length} clip(s) → ${destName}`);
+      ctx.notify.notify("info", `${folder.def.name}: merged ${inputs.length} clip(s) → ${destName}`, {
+        batchKey: folder.def.name,
+      });
       if (trash.failed.length) {
-        ctx.notify.notify("warn", `${folder.def.name}: merged, but ${trash.failed.length} source clip(s) could not be moved to trash`);
+        ctx.notify.notify("warn", `${folder.def.name}: merged, but ${trash.failed.length} source clip(s) could not be moved to trash`, {
+          batchKey: folder.def.name,
+        });
       }
       return { ok: true, destName, inputs, ...trash };
     } finally {
@@ -314,9 +327,13 @@ export async function deleteReviewedAudioGroup(ctx, folder, { chat, date, file }
       if (ctx.config.dryRun) return { ok: true, dryRun: true, deleted: [file] };
       const result = await trashInputs(ctx, folder, [file], null);
       ctx.log(`deleted ${result.trashed.length} file(s) from ${folder.def.name} into trash`);
-      ctx.notify.notify("info", `${folder.def.name}: deleted ${result.trashed.length} file(s) into trash`);
+      ctx.notify.notify("info", `${folder.def.name}: deleted ${result.trashed.length} file(s) into trash`, {
+        batchKey: folder.def.name,
+      });
       if (result.failed.length) {
-        ctx.notify.notify("warn", `${folder.def.name}: ${result.failed.length} file(s) could not be moved to trash`);
+        ctx.notify.notify("warn", `${folder.def.name}: ${result.failed.length} file(s) could not be moved to trash`, {
+          batchKey: folder.def.name,
+        });
       }
       return { ok: true, deleted: result.trashed, ...result };
     }
@@ -328,9 +345,13 @@ export async function deleteReviewedAudioGroup(ctx, folder, { chat, date, file }
     }
     const result = await trashInputs(ctx, folder, inputs, null);
     ctx.log(`deleted ${result.trashed.length} audio clip(s) from ${chat || "(root)"} / ${date} into trash`);
-    ctx.notify.notify("info", `${folder.def.name}: deleted ${result.trashed.length} clip(s) (${chat || "root"} / ${date}) into trash`);
+    ctx.notify.notify("info", `${folder.def.name}: deleted ${result.trashed.length} clip(s) (${chat || "root"} / ${date}) into trash`, {
+      batchKey: folder.def.name,
+    });
     if (result.failed.length) {
-      ctx.notify.notify("warn", `${folder.def.name}: ${result.failed.length} clip(s) could not be moved to trash`);
+      ctx.notify.notify("warn", `${folder.def.name}: ${result.failed.length} clip(s) could not be moved to trash`, {
+        batchKey: folder.def.name,
+      });
     }
     return { ok: true, deleted: result.trashed, ...result };
   });

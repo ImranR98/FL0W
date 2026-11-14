@@ -70,3 +70,53 @@ test("notification taps link to the app's real base path, not the old /media nam
     }
   });
 });
+
+test("success notifications are coalesced per folder", async () => {
+  await withFakeRelay(async (received) => {
+    const notifier = new Notifier({ notifySuccess: true }, log, { batchQuietMs: 20, batchMaxMs: 200 });
+    await notifier.notify("info", "Camera: a.jpg → A.jpg", { batchKey: "Camera" });
+    await notifier.notify("info", "Camera: b.jpg → B.jpg", { batchKey: "Camera" });
+    assert.equal(received.length, 0, "batch waits for the quiet window");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(received.length, 1);
+    assert.match(received[0].body.message, /Camera: 2 updates/);
+    assert.match(received[0].body.message, /a\.jpg/);
+    assert.match(received[0].body.message, /b\.jpg/);
+    await notifier.flush();
+  });
+});
+
+test("errors stay immediate while a success batch is pending", async () => {
+  await withFakeRelay(async (received) => {
+    const notifier = new Notifier({ notifySuccess: true }, log, { batchQuietMs: 1000, batchMaxMs: 2000 });
+    await notifier.notify("info", "Camera: a.jpg → A.jpg", { batchKey: "Camera" });
+    await notifier.notify("error", "Camera/b.jpg: failed");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(received.length, 1);
+    assert.match(received[0].body.message, /failed/);
+    await notifier.flush();
+    assert.equal(received.length, 2);
+  });
+});
+
+test("the max batch window flushes continuously arriving files", async () => {
+  await withFakeRelay(async (received) => {
+    const notifier = new Notifier({ notifySuccess: true }, log, { batchQuietMs: 1000, batchMaxMs: 30 });
+    await notifier.notify("info", "Camera: a.jpg → A.jpg", { batchKey: "Camera" });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(received.length, 1);
+    assert.match(received[0].body.message, /Camera: a\.jpg → A\.jpg/);
+  });
+});
+
+test("flushing a pending batch sends it exactly once", async () => {
+  await withFakeRelay(async (received) => {
+    const notifier = new Notifier({ notifySuccess: true }, log, { batchQuietMs: 1000, batchMaxMs: 2000 });
+    await notifier.notify("info", "Camera: a.jpg → A.jpg", { batchKey: "Camera" });
+    await notifier.notify("info", "Camera: b.jpg → B.jpg", { batchKey: "Camera" });
+    await notifier.flush();
+    assert.equal(received.length, 1);
+    await notifier.flush();
+    assert.equal(received.length, 1);
+  });
+});

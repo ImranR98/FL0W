@@ -49,6 +49,7 @@ export async function startFl0w(options = {}) {
     force: options.force,
     bindHost: '127.0.0.1',
     port: 0,
+    startQueue: false,
   })
   await pipelineDaemon.start()
 
@@ -62,6 +63,7 @@ export async function startFl0w(options = {}) {
     log,
   })
   await engine.start()
+  pipelineDaemon.queue.start()
   pipelineDaemon.onConfigChange = () => {
     engine.reload().catch((err) => log(`job reload failed: ${err.message}`))
   }

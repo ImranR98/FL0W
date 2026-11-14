@@ -13,7 +13,12 @@ function backoffMs(attempts) {
 export class Queue {
   constructor(ctx) {
     this.ctx = ctx;
+    // `active` is the public "is this folder busy?" set. `activeCounts` is
+    // the real in-flight count: several files from one folder can run at the
+    // same time, and the folder must stay active until the last one finishes.
     this.active = new Set();
+    this.activeCounts = new Map();
+    this.runStats = new Map();
     this.running = 0;
     this.timer = null;
     this.ticking = false;
@@ -135,11 +140,11 @@ export class Queue {
 
   // Serialize an external action (reviewed-audio approve/delete) against the
   // normal watcher queue for the same folder.
-  async runExclusive(folderName, job) {
+  async runExclusive(folderName, job, { trigger = "manual" } = {}) {
     if (this.active.has(folderName)) {
       return { ok: false, busy: true, error: "another job is already running for this folder" };
     }
-    this.#reserve(folderName);
+    this.#reserve(folderName, { trigger });
     try {
       return await job();
     } finally {
@@ -147,13 +152,26 @@ export class Queue {
     }
   }
 
-  #reserve(folderName) {
-    const first = !this.active.has(folderName);
+  // Fold a reviewed-audio action into the current run totals. The action runs
+  // through `runExclusive` and never reaches `#applyResults`, so without this
+  // its run history would always report zero.
+  patchRunStats(folderName, patch = {}) {
+    const stats = this.runStats.get(folderName);
+    if (!stats) return;
+    for (const [key, value] of Object.entries(patch)) {
+      if (typeof value === "number") stats[key] = (stats[key] ?? 0) + value;
+    }
+  }
+
+  #reserve(folderName, { trigger = null } = {}) {
+    const count = this.activeCounts.get(folderName) ?? 0;
+    this.activeCounts.set(folderName, count + 1);
     this.active.add(folderName);
     this.running++;
-    if (first) {
+    if (count === 0) {
+      this.runStats.set(folderName, { processed: 0, review: 0, issues: 0 });
       try {
-        this.ctx.onJobStart?.(folderName);
+        this.ctx.onJobStart?.(folderName, { trigger });
       } catch (err) {
         this.ctx.log(`job start hook failed: ${err.message}`);
       }
@@ -161,14 +179,21 @@ export class Queue {
   }
 
   #release(folderName) {
-    const wasActive = this.active.delete(folderName);
+    const count = (this.activeCounts.get(folderName) ?? 1) - 1;
     this.running = Math.max(0, this.running - 1);
-    if (wasActive && !this.active.has(folderName)) {
-      try {
-        this.ctx.onJobEnd?.(folderName);
-      } catch (err) {
-        this.ctx.log(`job end hook failed: ${err.message}`);
-      }
+    if (count > 0) {
+      this.activeCounts.set(folderName, count);
+      setTimeout(() => this.tick(), 0).unref?.();
+      return;
+    }
+    this.activeCounts.delete(folderName);
+    this.active.delete(folderName);
+    const stats = this.runStats.get(folderName) ?? { processed: 0, review: 0, issues: 0 };
+    this.runStats.delete(folderName);
+    try {
+      this.ctx.onJobEnd?.(folderName, stats);
+    } catch (err) {
+      this.ctx.log(`job end hook failed: ${err.message}`);
     }
     setTimeout(() => this.tick(), 0).unref?.();
   }
@@ -178,7 +203,7 @@ export class Queue {
     const file = store.fileFor(folder.def.name, fileName);
     if (!file) return;
     this.#reserve(folder.def.name);
-    store.updateFile(folder.def.name, fileName, { status: STATUS.QUEUED });
+    store.updateFile(folder.def.name, fileName, { status: STATUS.PROCESSING });
     const processor = folder.def.method === "copy" ? processCopy : processStandardize;
     processor(this.ctx, folder, file)
       .then((result) => this.#applyResults(folder, [fileName], result))
@@ -191,7 +216,7 @@ export class Queue {
     if (files.length === 0) return;
     this.#reserve(folder.def.name);
     for (const file of files) {
-      store.updateFile(folder.def.name, file.name, { status: STATUS.QUEUED });
+      store.updateFile(folder.def.name, file.name, { status: STATUS.PROCESSING });
     }
     processSnapBatch(this.ctx, folder, files)
       .then((results) => {
@@ -205,7 +230,7 @@ export class Queue {
             && !outputs.has(result.destName)
           ) {
             outputs.add(result.destName);
-            this.ctx.notify.notify("info", `${folder.def.name}: concatenated ${result.destName}`);
+            this.ctx.notify.notify("info", `${folder.def.name}: concatenated ${result.destName}`, { batchKey: folder.def.name });
           }
         }
       })
@@ -223,6 +248,12 @@ export class Queue {
       const file = store.fileFor(folder.def.name, name);
       if (!file) continue;
       file.forceNow = false;
+      const stats = this.runStats.get(folder.def.name);
+      if (stats) {
+        if (result.status === STATUS.DONE || result.status === STATUS.DUPLICATE) stats.processed += 1;
+        else if (result.status === STATUS.REVIEW) stats.review += 1;
+        else if (result.status === STATUS.ERROR || result.status === STATUS.CONFLICT) stats.issues += 1;
+      }
       const now = Date.now();
       if (result.status === STATUS.DONE || result.status === STATUS.DUPLICATE) {
         store.updateFile(folder.def.name, name, {
@@ -238,7 +269,7 @@ export class Queue {
           const summary = result.status === STATUS.DONE
             ? `${name}${dest ? ` → ${dest}` : ""}`
             : `${name} already in destination`;
-          notify.notify("info", `${folder.def.name}: ${summary}`);
+          notify.notify("info", `${folder.def.name}: ${summary}`, { batchKey: folder.def.name });
         }
       } else if (result.status === STATUS.REVIEW) {
         store.updateFile(folder.def.name, name, {
@@ -256,7 +287,7 @@ export class Queue {
           message: result.message ?? "conflict",
           nextRetryAt: 0,
         });
-        notify.notify("error", `${folder.def.name}/${name}: ${result.message ?? "conflict"}`);
+        notify.notify("error", `${folder.def.name}/${name}: ${result.message ?? "conflict"}`, { batchKey: folder.def.name });
       } else if (result.status === STATUS.PENDING) {
         store.updateFile(folder.def.name, name, {
           status: STATUS.PENDING,
@@ -275,7 +306,7 @@ export class Queue {
           nextRetryAt: retryable ? now + backoffMs(attempts) : 0,
         });
         if (!retryable) {
-          notify.notify("error", `${folder.def.name}/${name}: ${result.message ?? "processing failed"}`);
+          notify.notify("error", `${folder.def.name}/${name}: ${result.message ?? "processing failed"}`, { batchKey: folder.def.name });
         }
         log(`error processing ${folder.def.name}/${name}: ${result.message ?? "unknown"}`);
       }
@@ -287,7 +318,7 @@ export class Queue {
       return { ok: false, busy: true, error: "another job is already running for this folder" };
     }
     const { store } = this.ctx;
-    this.#reserve(folder.def.name);
+    this.#reserve(folder.def.name, { trigger: "manual" });
     for (const name of names) {
       store.updateFile(folder.def.name, name, { status: STATUS.PROCESSING });
     }

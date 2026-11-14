@@ -9,7 +9,9 @@ FL0W merges the old Task Runner and File Pipelines apps into one job model:
 - **Pipeline jobs** watch folders, standardize/copy media, park items for
   review, and move originals to trash only after verifying the destination.
 - Both appear in one jobs list with shared schedules, run state, logs and
-  notifications. Pipeline jobs can also be scheduled.
+  notifications. Task notifications are per run; pipeline file successes are
+  coalesced per folder, while warnings and failures notify immediately.
+  Pipeline jobs can also be scheduled.
 
 The unified UI lives at `/`; it covers task actions, uploads, the login
 browser, pipeline review, cleanup, trash and job settings. `/tasks` and
