@@ -3,10 +3,10 @@ import { Dialog } from '@dscpln/ui-kit'
 export default function RestoreDialog({ dialog, onDirChange, onRestore, onClose }) {
   return (
           <Dialog onClose={onClose} className="narrow-dialog" title="Restore files">
-        <p className="hint">Files with a recorded origin return to their original folder. Files without one are restored to the directory you enter here.</p>
+        <p className="hint">Files with a recorded origin return to their original folder. Enter a directory only for entries without one; those will otherwise be reported as skipped.</p>
         <div className="native-fields">
           <label className="native-field">
-            <span className="field__label">Restore directory</span>
+            <span className="field__label">Restore directory (optional)</span>
             <input type="text" placeholder="/path/to/folder" autoComplete="off" value={dialog.dir} onChange={(event) => onDirChange(event.target.value)} />
           </label>
         </div>

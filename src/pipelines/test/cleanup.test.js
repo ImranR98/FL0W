@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { emptyTrash, listTrash, restoreTrashFiles, trashFile } from "../src/cleanup.js";
+import { cleanupFiles, emptyTrash, listTrash, restoreTrashFiles, trashFile } from "../src/cleanup.js";
+import { normalizeConfig } from "../src/config.js";
+import { STATUS, Store } from "../src/store.js";
 
 function makeCtx(root) {
   return {
@@ -105,6 +107,52 @@ test("emptyTrash removes all day directories", async () => {
     await fsp.writeFile(path.join(day, "a.bin"), "x");
     await emptyTrash(ctx);
     assert.deepEqual(await listTrash(ctx), []);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recursive cleanup verifies nested destinations and restores the subdirectory", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "file-pipelines-trash-"));
+  try {
+    await fsp.mkdir(path.join(root, "src", "sub"), { recursive: true });
+    await fsp.mkdir(path.join(root, "dest", "sub"), { recursive: true });
+    await fsp.writeFile(path.join(root, "src", "sub", "a.txt"), "nested");
+    await fsp.writeFile(path.join(root, "dest", "sub", "a.txt"), "nested");
+    const config = normalizeConfig({
+      stagingDir: path.join(root, "staging"),
+      reviewDir: path.join(root, "review"),
+      trashDir: path.join(root, "trash"),
+      logDir: path.join(root, "logs"),
+      settleSeconds: 0,
+      folders: [{
+        name: "Camera",
+        source: path.join(root, "src"),
+        destination: path.join(root, "dest"),
+        method: "copy",
+        recursive: true,
+        cleanup: true,
+      }],
+    });
+    const store = new Store(config, null);
+    await store.scanFolder("Camera");
+    store.updateFile("Camera", "sub/a.txt", { status: STATUS.DONE, destName: "sub/a.txt" });
+    const ctx = {
+      config,
+      store,
+      log: () => {},
+      notify: { notify: () => {} },
+    };
+
+    const results = await cleanupFiles(ctx, store.getFolder("Camera"), ["sub/a.txt"]);
+    assert.deepEqual(results.map((result) => result.ok), [true]);
+    assert.equal(await exists(path.join(root, "src", "sub", "a.txt")), false);
+
+    const entries = await listTrash(ctx);
+    assert.equal(entries[0].files[0].sourceDir, path.join(root, "src", "sub"));
+    const restored = await restoreTrashFiles(ctx, [{ day: entries[0].day, name: entries[0].files[0].name }]);
+    assert.deepEqual(restored.map((result) => result.ok), [true]);
+    assert.equal(await fsp.readFile(path.join(root, "src", "sub", "a.txt"), "utf8"), "nested");
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

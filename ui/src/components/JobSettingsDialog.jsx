@@ -90,13 +90,17 @@ export default function JobSettingsDialog({ job, attributes, onClose, onSave }) 
             <input type="checkbox" checked={jobEnabled} onChange={(event) => setJobEnabled(event.target.checked)} />
             <span>Enabled</span>
           </label>
-          <Field label="Notifications" htmlFor="job-notify" hint="Failures always notify; “always” also sends successful runs.">
-            <select id="job-notify" value={notify} onChange={(event) => setNotify(event.target.value)}>
-              <option value="never">Never</option>
-              <option value="errors">On failure</option>
-              <option value="always">Always</option>
-            </select>
-          </Field>
+          {job.type === 'pipeline' ? (
+            <p className="hint">Pipeline notifications are configured per folder in Pipeline settings.</p>
+          ) : (
+            <Field label="Notifications" htmlFor="job-notify" hint="Failures always notify; “always” also sends successful runs.">
+              <select id="job-notify" value={notify} onChange={(event) => setNotify(event.target.value)}>
+                <option value="never">Never</option>
+                <option value="errors">On failure</option>
+                <option value="always">Always</option>
+              </select>
+            </Field>
+          )}
         </section>
 
         <section className="settings-section">

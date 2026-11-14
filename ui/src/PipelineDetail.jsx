@@ -217,16 +217,75 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
     } finally { setReviewBulkBusy('') }
   }
 
-  const reviewAction = async (name, id, place) => {
+  const reviewAction = async (name, id, place, extra = {}) => {
     if (!place && !(await askConfirm('Confirm', 'Discard this parked item?', 'Discard'))) return
-    await postJson(place ? '/pipelines/api/review/place' : '/pipelines/api/review/discard', { folder: name, id })
-    await openReview(); refresh(); onChanged?.()
+    try {
+      const result = await postJson(
+        place ? '/pipelines/api/review/place' : '/pipelines/api/review/discard',
+        { folder: name, id, ...extra },
+      )
+      if (place) {
+        if (result?.ok === false && result.canReplace && !extra.replace) {
+          const replace = await askConfirm(
+            'Replace the earlier merge?',
+            result.reason || 'The destination already has an earlier merge of this group.',
+            'Replace',
+          )
+          if (replace) return reviewAction(name, id, true, { replace: true })
+        } else if (result?.ok === false) {
+          notify(result.reason || 'Could not place this item.', 'error')
+        }
+      } else {
+        const failed = (result?.results ?? []).filter((entry) => entry.ok === false)
+        if (failed.length) notify(failed[0].reason || 'Could not discard this item.', 'error')
+      }
+    } catch (err) {
+      notify(err.message, 'error')
+      return
+    }
+    await openReview(); refresh(); refreshRuns(); onChanged?.()
   }
 
   const reviewActionAll = async (name, place) => {
     if (!place && !(await askConfirm('Confirm', `Discard every parked item in ${name}?`, 'Discard all'))) return
-    await postJson(place ? '/pipelines/api/review/place-all' : '/pipelines/api/review/discard-all', { folder: name })
-    await openReview(); refresh(); onChanged?.()
+    try {
+      const response = await postJson(
+        place ? '/pipelines/api/review/place-all' : '/pipelines/api/review/discard-all',
+        { folder: name },
+      )
+      let failed = (response?.results ?? []).filter((result) => result.ok === false)
+      const replaceable = place ? failed.filter((result) => result.canReplace) : []
+      if (replaceable.length) {
+        const replace = await askConfirm(
+          `Replace ${replaceable.length} earlier merge${replaceable.length === 1 ? '' : 's'}?`,
+          'The destination already has earlier merges of these groups.',
+          'Replace',
+        )
+        if (replace) {
+          const retried = []
+          for (const entry of replaceable) {
+            try {
+              const result = await postJson('/pipelines/api/review/place', {
+                folder: name,
+                id: entry.id,
+                replace: true,
+              })
+              if (result?.ok === false) retried.push({ id: entry.id, ...result })
+            } catch (err) {
+              retried.push({ id: entry.id, ok: false, reason: err.message })
+            }
+          }
+          failed = [...failed.filter((entry) => !entry.canReplace), ...retried]
+        }
+      }
+      if (failed.length) {
+        notify(`${failed.length} parked item(s) could not be placed: ${failed[0].reason}`, 'error')
+      }
+    } catch (err) {
+      notify(err.message, 'error')
+      return
+    }
+    await openReview(); refresh(); refreshRuns(); onChanged?.()
   }
 
   const filteredTrash = useMemo(() => {
@@ -272,7 +331,12 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
 
   const removeTrash = async () => {
     if (!(await askConfirm('Confirm', 'Permanently delete every trashed file?', 'Empty trash'))) return
-    await postJson('/pipelines/api/trash/empty', {})
+    try {
+      await postJson('/pipelines/api/trash/empty', {})
+    } catch (err) {
+      notify(`Empty trash failed: ${err.message}`, 'error')
+      return
+    }
     refreshTrash(); refreshLog(); onChanged?.()
   }
 
@@ -452,8 +516,8 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
             if (!setDateDialog.date) return setSetDateDialog((current) => ({ ...current, error: 'Pick a date first.' }))
             const { file, date, time } = setDateDialog
             setSetDateDialog(null)
-            await fileAction(file, 'setDate', { date: `${date} ${time || '00:00'}` })
-            notify(`Standardizing ${file} with the chosen date.`)
+            const result = await fileAction(file, 'setDate', { date: `${date} ${time || '00:00'}` })
+            if (result) notify(`Standardizing ${file} with the chosen date.`)
           }}
         />
       ) : null}
@@ -464,10 +528,12 @@ export default function PipelineDetail({ job, attributes, onChanged }) {
           onClose={() => setRestoreDialog(null)}
           onDirChange={(dir) => setRestoreDialog((current) => ({ ...current, dir }))}
           onRestore={async () => {
-            if (!restoreDialog.dir.trim()) return setRestoreDialog((current) => ({ ...current, error: 'Enter a directory first.' }))
             const { items, dir } = restoreDialog
             setRestoreDialog(null)
-            await restoreFiles(items, dir.trim())
+            // Files with a recorded origin restore there; the directory is
+            // only needed for entries that lack one. Let the server report
+            // those rather than blocking every restore.
+            await restoreFiles(items, dir.trim() || null)
           }}
         />
       ) : null}

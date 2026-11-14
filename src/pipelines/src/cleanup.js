@@ -32,6 +32,18 @@ export async function verifyCleanupTarget(ctx, folder, file) {
 
   const destDir = folder.def.destination;
   store.cache.invalidate(destDir);
+  if (folder.def.method === "copy") {
+    // Copy folders mirror the source tree, so the destination path is the
+    // source-relative key, including subdirectories. `DirCache` only lists
+    // the root and cannot verify nested mirrors.
+    const destPath = path.join(destDir, ...file.name.split("/"));
+    if (!(await pathExists(destPath))) {
+      return { ok: false, reason: "no verified file found in destination" };
+    }
+    const verification = await verificationFor({ method: "copy", sourcePath, destPath, exiftool });
+    if (!verification.ok) return { ok: false, reason: verification.reason };
+    return { ok: true, destPath, how: verification.how, note: verification.note };
+  }
   const names = await store.cache.list(destDir);
   let match = names.includes(file.name) ? file.name : null;
   if (!match) {
@@ -134,9 +146,11 @@ export async function cleanupFiles(ctx, folder, names) {
       continue;
     }
     try {
-      const sourcePath = path.join(folder.def.source, name);
+      const sourcePath = path.join(folder.def.source, ...name.split("/"));
       const trashPath = await trashFile(ctx, sourcePath, {
-        sourceDir: folder.def.source,
+        // Record the actual parent so recursive files restore into their
+        // original subdirectory rather than the folder root.
+        sourceDir: path.dirname(sourcePath),
         folder: folder.def.name,
         destName: verify.destPath ? path.basename(verify.destPath) : file.destName ?? null,
       });

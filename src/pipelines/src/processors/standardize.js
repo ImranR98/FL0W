@@ -93,7 +93,7 @@ export async function processStandardize(ctx, folder, file, { forcedDate = null,
   if (config.dryRun) {
     const date = forcedDate ?? (await findRealExifDate(exiftool, sourcePath));
     if (!date) return { status: "error", kind: "nodate", message: "no usable date metadata found" };
-    const destName = standardNameFor(file.name, date);
+    const destName = standardNameFor(path.basename(file.name), date);
     return { status: "pending", message: `dry run: would place ${destName}` };
   }
 

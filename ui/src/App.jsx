@@ -9,6 +9,7 @@ import PickerModal from '../../src/tasks/ui/src/components/modals/PickerModal.js
 import ResultModal from '../../src/tasks/ui/src/components/modals/ResultModal.jsx'
 import JobCard from './components/JobCard.jsx'
 import JobSettingsDialog from './components/JobSettingsDialog.jsx'
+import CleanupDialog from '../../src/pipelines/ui/src/components/dialogs/CleanupDialog.jsx'
 import PipelineDetail from './PipelineDetail.jsx'
 
 const UNASSIGNED = 'Unassigned'
@@ -59,6 +60,7 @@ export default function App() {
   const [liveLogs, setLiveLogs] = useState({})
   const [modals, setModals] = useState([])
   const [settingsJob, setSettingsJob] = useState(null)
+  const [cleanupDialog, setCleanupDialog] = useState(null)
   const [attributes, setAttributes] = useState([])
   const [defaultGroupBy, setDefaultGroupBy] = useState('')
   const [groupBy, setGroupBy] = useState('')
@@ -473,6 +475,53 @@ export default function App() {
 
   const runJob = (job) => (job.type === 'pipeline' ? runPipeline(job) : runTask(job))
 
+  const openCleanup = async (job) => {
+    try {
+      const preview = await getJson(`/pipelines/api/cleanup/${encodeURIComponent(job.name)}`)
+      if (preview.disabled) {
+        toast('Cleanup is disabled for this folder.', 'error')
+        return
+      }
+      if (!preview.files?.length) {
+        toast('Nothing to clean up in this folder.', 'error')
+        return
+      }
+      setCleanupDialog({
+        folder: job.name,
+        files: preview.files,
+        totalBytes: preview.totalBytes,
+        selected: new Set(preview.files.map((file) => file.name)),
+      })
+    } catch (err) {
+      toast(err.message, 'error')
+    }
+  }
+
+  const runCleanup = async () => {
+    if (!cleanupDialog) return
+    const names = [...cleanupDialog.selected]
+    if (!names.length) {
+      toast('No files selected.', 'error')
+      return
+    }
+    const { folder } = cleanupDialog
+    setCleanupDialog(null)
+    try {
+      const { results } = await postJson(`/pipelines/api/cleanup/${encodeURIComponent(folder)}`, { names })
+      const failed = results.filter((result) => !result.ok)
+      toast(`Moved ${results.length - failed.length} file(s) to trash.`, failed.length ? 'error' : 'success')
+      if (failed.length) {
+        resultModal(
+          `Cleanup ${folder} — failures`,
+          failed.map((result) => `${result.name}: ${result.reason}`).join('\n'),
+        )
+      }
+    } catch (err) {
+      toast(`Cleanup failed: ${err.message}`, 'error')
+    }
+    await loadJobs()
+  }
+
   const togglePaused = async () => {
     try {
       await postJson('/pipelines/api/pause', { paused: !paused })
@@ -502,6 +551,9 @@ export default function App() {
   // Poll run status while the page is open (the poll callback is refreshed
   // internally, so this timer never restarts).
   usePolling(poll, 700, { runImmediately: false })
+  // Task status is quiet when only pipelines are running, so refresh the job
+  // cards on their own slower cadence too.
+  usePolling(loadJobs, 5000, { runImmediately: false })
 
   const groupingAttribute = attributes.find((attribute) => attribute.name === groupBy)
   const scopedJobs = typeFilter === 'all' ? jobs : jobs.filter((job) => job.type === typeFilter)
@@ -719,6 +771,7 @@ export default function App() {
                   onAction={runAction}
                   onRun={runJob}
                   onCancel={(jobEntry) => cancelRun(jobEntry.name)}
+                  onCleanup={openCleanup}
                   onLog={openLog}
                   onFiles={openPipeline}
                   compact={density === 'compact'}
@@ -742,6 +795,24 @@ export default function App() {
           attributes={attributes}
           onClose={() => setSettingsJob(null)}
           onSave={(settings) => saveSettings(settingsJob, settings)}
+        />
+      ) : null}
+
+      {cleanupDialog ? (
+        <CleanupDialog
+          dialog={cleanupDialog}
+          onClose={() => setCleanupDialog(null)}
+          onSelectAll={(checked) => setCleanupDialog((current) => ({
+            ...current,
+            selected: checked ? new Set(current.files.map((file) => file.name)) : new Set(),
+          }))}
+          onToggle={(name, checked) => setCleanupDialog((current) => {
+            const next = new Set(current.selected)
+            if (checked) next.add(name)
+            else next.delete(name)
+            return { ...current, selected: next }
+          })}
+          onMove={runCleanup}
         />
       ) : null}
 

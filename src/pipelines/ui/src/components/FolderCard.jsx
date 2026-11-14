@@ -111,7 +111,7 @@ export default function FolderCard({
                           </>
                         ) : null}
                         {folder.method !== 'reviewed-audio' && (file.status === 'error' || file.status === 'conflict' || file.status === 'pending') ? (
-                          <button className="outline secondary icon-button icon-button--small" title="Import as-is" aria-label={`Import ${file.name} as-is`} onClick={() => onFileAction(file.name, 'import')}>
+                          <button className="outline secondary icon-button icon-button--small" title="Import as-is" aria-label={`Import ${file.name} as-is`} onClick={() => onFileAction(file.name, 'importAsIs')}>
                             <Import size={14} strokeWidth={1.8} />
                           </button>
                         ) : null}

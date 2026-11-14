@@ -11,6 +11,8 @@ async function fixture(t) {
     await fsp.mkdir(path.join(root, dir), { recursive: true })
   }
   await fsp.writeFile(path.join(root, 'src', 'hello.txt'), 'hello pipeline\n')
+  await fsp.mkdir(path.join(root, 'voice', 'chat'), { recursive: true })
+  await fsp.writeFile(path.join(root, 'voice', 'chat', 'PTT-20260101-WA0001.opus'), 'voice clip')
   const taskConfig = path.join(root, 'config.mjs')
   await fsp.writeFile(taskConfig, `export default {
     maindir: ${JSON.stringify(root)},
@@ -31,7 +33,17 @@ async function fixture(t) {
     trashDir: path.join(root, 'trash'),
     logDir: path.join(root, 'logs'),
     syncLockFile: path.join(root, 'lock.json'),
-    folders: [{ name: 'Camera Roll', source: path.join(root, 'src'), destination: path.join(root, 'dest'), method: 'copy', autoProcess: false, cleanup: false }],
+    folders: [
+      { name: 'Camera Roll', source: path.join(root, 'src'), destination: path.join(root, 'dest'), method: 'copy', autoProcess: false, cleanup: true },
+      {
+        name: 'Voice',
+        source: path.join(root, 'voice'),
+        destination: path.join(root, 'dest'),
+        method: 'reviewed-audio',
+        recursive: true,
+        datePattern: '-(\\d{8})-',
+      },
+    ],
   }))
   process.env.BACKUPCTL_CONFIG_FILE = taskConfig
   process.env.BACKUPCTL_STATE_DIR = path.join(root, 'state')
@@ -66,7 +78,7 @@ test('ui: unified jobs, pipeline card and detail run history render', async (t) 
     assert.match(await page.textContent('h1'), /FL0W/)
     assert.equal(await page.locator('.dropzone').count(), 1)
     assert.equal(await page.locator('[data-testid="task-Echo"]').count(), 1)
-    assert.equal(await page.locator('.job-card').count(), 2)
+    assert.equal(await page.locator('.job-card').count(), 3)
     assert.ok((await page.locator('.global-drop__dropzone').boundingBox()).height < 130)
     const buttonStyles = await page.evaluate(() => {
       const primary = getComputedStyle(document.querySelector('.job-card__actions .btn--primary'))
@@ -98,11 +110,16 @@ test('ui: unified jobs, pipeline card and detail run history render', async (t) 
     assert.match(await page.locator('[data-testid="job-type-pipeline-Camera Roll"]').textContent(), /Pipeline · Copy/)
     assert.equal(await page.locator('[data-testid="pipeline-Camera Roll"]').getByRole('button', { name: 'Settings' }).count(), 1)
     assert.equal(await page.locator('[data-testid="task-Echo"]').getByRole('button', { name: 'Settings' }).count(), 1)
+    assert.equal(await page.locator('[data-testid="pipeline-Camera Roll"]').getByRole('button', { name: 'Cleanup' }).count(), 1)
+    assert.equal(await page.locator('[data-testid="pipeline-Camera Roll"]').getByRole('button', { name: 'Run' }).count(), 0)
+    assert.equal(await page.locator('[data-testid="pipeline-Voice"]').getByRole('button', { name: 'Run' }).count(), 0)
+    assert.equal(await page.locator('[data-testid="task-Echo"]').getByRole('button', { name: 'Run' }).count(), 1)
     assert.ok(await page.locator('[data-testid="pipeline-Camera Roll"] .btn').count() >= 4)
 
     await page.locator('[data-testid="pipeline-Camera Roll"]').getByRole('button', { name: 'Settings' }).click()
     await page.waitForSelector('dialog[open]')
     assert.match(await page.locator('dialog[open] h2').first().textContent(), /Settings: Camera Roll/)
+    assert.equal(await page.locator('dialog[open] #job-notify').count(), 0)
     assert.equal(await page.locator('dialog[open] #job-attribute-Category').count(), 1)
     assert.equal(await page.locator('dialog[open] [id="job-attribute-Best run from"]').count(), 1)
     assert.match(await page.locator('[id="job-attribute-Best run from"]').textContent(), /Anywhere \(auto\)/)
@@ -111,12 +128,82 @@ test('ui: unified jobs, pipeline card and detail run history render', async (t) 
     await page.waitForSelector('dialog[open]', { state: 'detached' })
     await page.waitForFunction(() => !document.querySelector('[data-testid="pipeline-Camera Roll"]')?.innerText.includes('Best run from'))
 
+    await page.locator('[data-testid="task-Echo"]').getByRole('button', { name: 'Settings' }).click()
+    await page.waitForSelector('dialog[open]')
+    assert.equal(await page.locator('dialog[open] #job-notify').count(), 1)
+    await page.locator('dialog[open]').getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForSelector('dialog[open]', { state: 'detached' })
+
     await page.locator('[data-testid="pipeline-Camera Roll"]').getByRole('button', { name: 'Files' }).click()
     await page.waitForSelector('text=Run history')
     assert.match(page.url(), /#\/jobs\/pipeline\/Camera%20Roll$/)
     assert.match(await page.textContent('body'), /Camera Roll/)
     assert.match(await page.textContent('body'), /Run history/)
     assert.deepEqual(errors, [])
+    await page.close()
+  } finally {
+    await browser.close()
+  }
+})
+
+test('ui: automatic pipeline cards clean up instead of running', async (t) => {
+  const browser = await launchBrowser()
+  if (!browser) {
+    t.skip('chromium not available')
+    return
+  }
+  const { base } = await fixture(t)
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    await page.goto(base, { waitUntil: 'networkidle' })
+    const card = page.locator('[data-testid="pipeline-Camera Roll"]')
+    await page.waitForFunction(() => {
+      const button = [...document.querySelectorAll('[data-testid="pipeline-Camera Roll"] button')]
+        .find((entry) => entry.textContent.trim() === 'Cleanup')
+      return button && !button.disabled
+    })
+    assert.equal(await card.getByRole('button', { name: 'Run' }).count(), 0)
+    await card.getByRole('button', { name: 'Cleanup' }).click()
+    await page.waitForSelector('dialog[open]')
+    assert.match(await page.textContent('dialog[open]'), /hello\.txt/)
+    await page.locator('dialog[open]').getByRole('button', { name: 'Move to trash' }).click()
+    await page.waitForSelector('dialog[open]', { state: 'detached' })
+    let folder = null
+    for (let i = 0; i < 50; i++) {
+      const state = await (await fetch(`${base}/pipelines/api/state`)).json()
+      folder = state.folders.find((entry) => entry.name === 'Camera Roll')
+      if (folder && !folder.files.some((file) => file.name === 'hello.txt')) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.ok(folder)
+    assert.equal(folder.files.some((file) => file.name === 'hello.txt'), false)
+    await page.close()
+  } finally {
+    await browser.close()
+  }
+})
+
+test('ui: reviewed audio uses the pipelines API path', async (t) => {
+  const browser = await launchBrowser()
+  if (!browser) {
+    t.skip('chromium not available')
+    return
+  }
+  const { base } = await fixture(t)
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    await page.goto(`${base}/#/jobs/pipeline/Voice`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('text=Run history')
+    await page.getByRole('button', { name: /^Review/ }).click()
+    await page.waitForSelector('dialog[open]')
+    const audio = page.locator('dialog[open] audio').first()
+    const src = await audio.getAttribute('src')
+    assert.match(src, /\/pipelines\/api\/review\/audio\/Voice\//)
+    const full = src.startsWith('http') ? src : `${base}${src}`
+    const response = await page.request.get(full)
+    assert.equal(response.status(), 200)
+    const ranged = await page.request.get(full, { headers: { Range: 'bytes=0-3' } })
+    assert.equal(ranged.status(), 206)
     await page.close()
   } finally {
     await browser.close()

@@ -89,7 +89,7 @@ export default function SettingsDialog({ draft, updateDraft, addFolder, saveSett
               {folder.method === 'reviewed-audio' || folder.datePattern ? (
                 <div className="field">
                   <span className="field__label">Date pattern (optional for reviewed audio)</span>
-                  <input value={folder.datePattern ?? ''} placeholder="-(\d{8})- (leave blank to use file metadata)" onChange={(event) => setFolder(index, (f) => { f.datePattern = event.target.value })} />
+                  <input value={folder.datePattern ?? ''} placeholder={String.raw`-(\d{8})- (leave blank to use file metadata)`} onChange={(event) => setFolder(index, (f) => { f.datePattern = event.target.value })} />
                   <p className="hint">The pattern supplies the file date. When concatenation is on, clips are also grouped by chat/day; turn it off to standardize each file individually.</p>
                 </div>
               ) : null}

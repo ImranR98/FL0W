@@ -182,6 +182,19 @@ export class Store {
       folder.lastEventAt = Date.now();
       return file;
     }
+    // A file that reappears after cleanup is a new occurrence. Without this
+    // reset the old CLEANED entry would keep the source invisible until the
+    // 24-hour prune runs.
+    if (existing.status === STATUS.CLEANED) {
+      existing.status = matches ? STATUS.PENDING : STATUS.IGNORED;
+      existing.message = matches ? null : mismatchMessage;
+      existing.destName = null;
+      existing.attempts = 0;
+      existing.errorKind = null;
+      existing.nextRetryAt = 0;
+      existing.forceNow = false;
+      existing.updatedAt = Date.now();
+    }
     const changed = existing.size !== stat.size || existing.mtimeMs !== stat.mtimeMs;
     existing.size = stat.size;
     existing.mtimeMs = stat.mtimeMs;
@@ -225,6 +238,7 @@ export class Store {
     if (status === STATUS.CLEANED) {
       file.status = STATUS.CLEANED;
       file.destName = null;
+      file.updatedAt = Date.now();
     } else {
       folder.files.delete(name);
     }
@@ -243,14 +257,16 @@ export class Store {
   async expectedDestName(folder, file) {
     const key = `${file.size}:${Math.round(file.mtimeMs)}`;
     if (file.expectFor === key) return file.expected ?? null;
-    const sourcePath = path.join(folder.def.source, file.name);
+    const sourcePath = path.join(folder.def.source, ...file.name.split("/"));
     let date;
     try {
       date = await findRealExifDate(this.exiftool, sourcePath);
     } catch {
       date = null;
     }
-    const expected = date ? standardNameFor(file.name, date) : null;
+    // Standardized destinations are flat, so a recursive source key must use
+    // its basename when computing the expected destination name.
+    const expected = date ? standardNameFor(path.basename(file.name), date) : null;
     file.expectFor = key;
     file.expected = expected;
     return expected;

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Download, FolderOpen, Play, ScrollText, Settings, Square } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, FolderOpen, Play, ScrollText, Settings, Square, Trash2 } from 'lucide-react'
 import { Button, StatusPill } from '@dscpln/ui-kit'
 import JobTypeBadge from './JobTypeBadge.jsx'
 import PipelineJobBody from './PipelineJobBody.jsx'
@@ -32,6 +32,7 @@ export default function JobCard({
   openBrowsers = {},
   onRun,
   onCancel,
+  onCleanup,
   onSettings,
   onLog,
   onFiles,
@@ -80,6 +81,14 @@ export default function JobCard({
     job.avail === false ||
     (job.type === 'task' && job.uploads && files.length === 0) ||
     (busy && !canCancel)
+
+  const processed = (job.counts?.done ?? 0) + (job.counts?.duplicate ?? 0)
+  const isPipeline = job.type === 'pipeline'
+  const canCleanup = isPipeline && job.placement === 'auto' && job.cleanup !== false
+  // Automatic pipelines are watched, so a manual Run adds little. Reviewed
+  // audio is approval-only; the API rejects Run for it.
+  const showRun = !isPipeline || (job.placement !== 'auto' && job.method !== 'reviewed-audio')
+  const cleanupDisabled = runDisabled || processed === 0
 
   const configActions = job.actions ?? []
   const hasActionState = configActions.some((action) => action.state)
@@ -191,11 +200,21 @@ export default function JobCard({
       <div className="job-card__actions">
         {canCancel ? (
           <Button variant="danger" icon={Square} onClick={() => onCancel(job)}>Stop</Button>
-        ) : (
+        ) : canCleanup ? (
+          <Button
+            variant="primary"
+            icon={Trash2}
+            onClick={() => onCleanup?.(job)}
+            disabled={cleanupDisabled}
+            title={processed === 0 ? 'Nothing processed to clean up' : undefined}
+          >
+            Cleanup
+          </Button>
+        ) : showRun ? (
           <Button variant="primary" icon={Play} onClick={() => onRun(job)} disabled={runDisabled}>
             Run
           </Button>
-        )}
+        ) : null}
         <Button variant="outline" icon={Settings} onClick={() => onSettings(job)}>Settings</Button>
         <Button variant="outline" icon={ScrollText} onClick={() => onLog(job)}>Log</Button>
         {job.type === 'pipeline' ? (
