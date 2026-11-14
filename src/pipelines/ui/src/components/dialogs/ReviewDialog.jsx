@@ -91,7 +91,7 @@ export default function ReviewDialog({
                             controls
                             preload="none"
                             aria-label={`Listen to ${file.split('/').pop()}`}
-                            src={apiUrl(`api/review/audio/${encodeURIComponent(group.folder)}/${encodeURIComponent(file)}`)}
+                            src={apiUrl(`pipelines/api/review/audio/${encodeURIComponent(group.folder)}/${encodeURIComponent(file)}`)}
                           ></audio>
                         </div>
                       ))}
@@ -133,7 +133,7 @@ export default function ReviewDialog({
                       {entry.chat || '(root)'} · {entry.inputs.length} input{entry.inputs.length === 1 ? '' : 's'} · {formatBytes(entry.size)}{entry.missingInputs?.length ? ` · ${entry.missingInputs.length} source(s) gone` : ''}
                     </span>
                   </div>
-                  <audio controls preload="none" src={apiUrl(`api/review/file/${encodeURIComponent(folder.name)}/${encodeURIComponent(entry.id)}`)}></audio>
+                  <audio controls preload="none" src={apiUrl(`pipelines/api/review/file/${encodeURIComponent(folder.name)}/${encodeURIComponent(entry.id)}`)}></audio>
                   <div className="review-row__actions">
                     <button onClick={() => onReviewAction(folder.name, entry.id, true)}>Place</button>
                     <button className="outline secondary" onClick={() => onReviewAction(folder.name, entry.id, false)}>Discard</button>
